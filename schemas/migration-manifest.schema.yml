@@ -51,6 +51,64 @@ properties:
           enum: [reusable, fixture, unsupported, needs-review]
         action:
           enum: [manual-review, migrate, ignore]
+        author:
+          type: object
+          additionalProperties: false
+          required: [name]
+          properties:
+            name:
+              type: string
+              minLength: 1
+            contact:
+              type: string
+              minLength: 1
+        curation:
+          type: object
+          additionalProperties: false
+          required:
+            - status
+            - description
+            - maintainers
+            - compatibility
+            - data_handling
+          properties:
+            status:
+              enum: [intake, candidate, stable, deprecated, retired]
+            description:
+              type: string
+              minLength: 1
+            maintainers:
+              type: array
+              minItems: 1
+              items:
+                type: string
+                minLength: 1
+            compatibility:
+              type: object
+              additionalProperties: false
+              required: [architectures, brane_baseline]
+              properties:
+                architectures:
+                  type: array
+                  minItems: 1
+                  items:
+                    enum: [x86_64, aarch64]
+                brane_baseline:
+                  type: string
+                  minLength: 1
+            data_handling:
+              type: object
+              additionalProperties: false
+              required: [accepts_user_data, bundled_data]
+              properties:
+                accepts_user_data:
+                  type: boolean
+                bundled_data:
+                  enum: [none, synthetic-fixtures-only]
+            licence:
+              type: string
+            notes:
+              type: string
         review_notes:
           type: string
         review_required:
@@ -75,3 +133,11 @@ properties:
           items:
             type: string
             minLength: 1
+      allOf:
+        - if:
+            properties:
+              action:
+                const: migrate
+            required: [action]
+          then:
+            required: [target_path, author, curation]

@@ -10,12 +10,7 @@ from typing import Any
 import yaml
 
 DEFAULT_CONFIG_NAMES = {
-    "branelet.yml",
-    "branelet.yaml",
     "container.yml",
-    "container.yaml",
-    "package.yml",
-    "package.yaml",
 }
 
 SKIPPED_DIRECTORIES = {
@@ -116,6 +111,7 @@ def discover(source: Path, config_names: set[str] | None = None) -> dict[str, An
         review_required = [
             "Confirm this directory is a valid Brane package.",
             "Review all findings and remove sensitive or generated material.",
+            "Identify the package author or responsible team in the manifest.",
             "Set an explicit classification and migration action.",
         ]
 

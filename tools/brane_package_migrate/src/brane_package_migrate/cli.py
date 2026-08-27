@@ -10,6 +10,7 @@ from brane_package_migrate import __version__
 from brane_package_migrate.discovery import discover, write_manifest
 from brane_package_migrate.migration import migrate
 from brane_package_migrate.repository import validate_repository
+from brane_package_migrate.review import review_manifest
 from brane_package_migrate.validation import validate_document
 
 
@@ -65,6 +66,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON Schema expressed as YAML.",
     )
 
+    review_parser = subcommands.add_parser(
+        "review",
+        help="Interactively complete a discovery manifest with author review data.",
+    )
+    review_parser.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help="Discovery or partially reviewed migration manifest to update.",
+    )
+    review_parser.add_argument(
+        "--schema",
+        type=Path,
+        default=Path("schemas/migration-manifest.schema.yml"),
+        help="Migration manifest schema (default: schemas/migration-manifest.schema.yml).",
+    )
+
     migrate_parser = subcommands.add_parser(
         "migrate",
         help="Copy explicitly approved, metadata-valid candidates into the repository.",
@@ -104,6 +122,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "review":
+        try:
+            review_manifest(args.manifest, args.schema)
+        except (OSError, ValueError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        return 0
 
     if args.command == "migrate":
         try:

@@ -13,7 +13,8 @@ This repository is separate from deployment infrastructure:
 - `test-fixtures/` contains synthetic or non-production package fixtures only.
 - Every tracked package or fixture has a `package.yml` that conforms to `schemas/package-metadata.schema.yml`.
 - `catalogue/packages.yml` indexes all tracked packages and fixtures.
-- Intake is manifest-driven: discovery creates a proposed manifest; migration requires explicit reviewed `action: migrate` entries.
+- Intake is manifest-driven: discovery creates a proposed manifest; migration requires explicit reviewed `action: migrate` entries with curation metadata.
+- Migration derives and validates destination `package.yml` from reviewed curation, source `container.yml`, and recorded provenance.
 - No credentials, private keys, client certificate bundles, tokens, production datasets, or generated Brane build artefacts may be committed.
 
 ## Layout
@@ -31,8 +32,8 @@ tools/           The package discovery and migration utility
 ## Initial workflow
 
 1. Run the discovery command against a source directory or repository checkout.
-1. Review the generated migration manifest and its findings.
-1. Mark only approved candidates with action: migrate.
+1. Have the package author or responsible team run the interactive review command to supply missing author and curation information.
+1. Review the completed manifest and its findings; approve only candidates with `action: migrate`, required `curation`, and a target matching the source `container.yml` name.
 1. Validate the reviewed manifest against its schema.
 1. Run the controlled migration command in dry-run mode, then execute it only after review.
 1. Validate metadata, catalogue entries, and repository safety checks.

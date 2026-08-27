@@ -25,9 +25,8 @@ def load_yaml_mapping(path: Path) -> dict[str, Any]:
     return document
 
 
-def validate_document(document_path: Path, schema_path: Path) -> list[str]:
-    """Return human-readable validation errors; an empty list means valid."""
-    document = load_yaml_mapping(document_path)
+def validate_mapping(document: dict[str, Any], schema_path: Path) -> list[str]:
+    """Return validation errors for an in-memory mapping."""
     schema = load_yaml_mapping(schema_path)
 
     try:
@@ -46,3 +45,8 @@ def validate_document(document_path: Path, schema_path: Path) -> list[str]:
         messages.append(f"{location}: {error.message}")
 
     return messages
+
+
+def validate_document(document_path: Path, schema_path: Path) -> list[str]:
+    """Return human-readable validation errors; an empty list means valid."""
+    return validate_mapping(load_yaml_mapping(document_path), schema_path)

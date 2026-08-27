@@ -17,7 +17,7 @@ def test_discover_allows_an_empty_source_directory(tmp_path: Path) -> None:
 def test_discover_marks_candidates_for_manual_review(tmp_path: Path) -> None:
     candidate = tmp_path / "example-package"
     candidate.mkdir()
-    (candidate / "branelet.yml").write_text("name: example\n", encoding="utf-8")
+    (candidate / "container.yml").write_text("name: example\n", encoding="utf-8")
     (candidate / "api_token.txt").write_text("not a real token\n", encoding="utf-8")
     (candidate / "Dockerfile").write_text(
         "FROM alpine:3.20\nRUN curl https://example.invalid/tool\n",
@@ -196,6 +196,20 @@ def _write_migration_manifest(
                 "target_path": "packages/incoming",
                 "classification": "reusable",
                 "action": action,
+                "author": {"name": "Test Author"},
+                "curation": {
+                    "status": "candidate",
+                    "description": "Test package imported through controlled intake.",
+                    "maintainers": ["Package Team"],
+                    "compatibility": {
+                        "architectures": ["x86_64"],
+                        "brane_baseline": "3.0.0-test+dcf91ca6",
+                    },
+                    "data_handling": {
+                        "accepts_user_data": False,
+                        "bundled_data": "none",
+                    },
+                },
                 "findings": findings or [],
             }
         ],
@@ -210,12 +224,11 @@ def _write_migration_source(tmp_path: Path) -> Path:
     source = tmp_path / "source"
     incoming = source / "incoming"
     incoming.mkdir(parents=True)
-    metadata = _valid_package_metadata("incoming", "shared-package")
-    metadata["source"]["source_path"] = "incoming"
-    (incoming / "package.yml").write_text(
-        yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8"
+    (incoming / "container.yml").write_text(
+        yaml.safe_dump({"name": "incoming", "version": "1.2.3"}, sort_keys=False),
+        encoding="utf-8",
     )
-    (incoming / "branelet.yml").write_text("name: incoming\n", encoding="utf-8")
+    (incoming / "run.py").write_text("# package entry point\n", encoding="utf-8")
     return source
 
 
@@ -241,7 +254,15 @@ def test_migration_copies_metadata_valid_package_and_updates_catalogue(
     manifest = _write_migration_manifest(repository, source)
 
     assert migrate(manifest, repository, execute=True) == ["packages/incoming"]
-    assert (repository / "packages" / "incoming" / "branelet.yml").is_file()
+    target = repository / "packages" / "incoming"
+    assert (target / "container.yml").is_file()
+
+    generated_metadata = yaml.safe_load((target / "package.yml").read_text(encoding="utf-8"))
+    assert generated_metadata["name"] == "incoming"
+    assert generated_metadata["version"] == "1.2.3"
+    assert generated_metadata["classification"] == "shared-package"
+    assert generated_metadata["source"]["type"] == "local-path"
+    assert generated_metadata["source"]["source_path"] == "incoming"
 
     catalogue = yaml.safe_load(
         (repository / "catalogue" / "packages.yml").read_text(encoding="utf-8")
@@ -316,3 +337,120 @@ def test_migration_removes_a_partial_target_when_copy_fails(
             "latest_version": "1.2.3",
         }
     ]
+
+
+def test_migration_requires_curation_for_approved_candidates(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import migrate
+
+    repository = _write_validation_repository(tmp_path)
+    source = _write_migration_source(tmp_path)
+    manifest = _write_migration_manifest(repository, source)
+
+    document = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+    del document["candidates"][0]["curation"]
+    manifest.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="'curation' is a required property"):
+        migrate(manifest, repository)
+
+
+def test_migration_requires_source_container_yml(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import migrate
+
+    repository = _write_validation_repository(tmp_path)
+    source = _write_migration_source(tmp_path)
+    (source / "incoming" / "container.yml").unlink()
+    manifest = _write_migration_manifest(repository, source)
+
+    with pytest.raises(ValueError, match="lacks required container.yml"):
+        migrate(manifest, repository)
+
+
+def test_migration_requires_author_for_approved_candidates(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import migrate
+
+    repository = _write_validation_repository(tmp_path)
+    source = _write_migration_source(tmp_path)
+    manifest = _write_migration_manifest(repository, source)
+
+    document = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+    del document["candidates"][0]["author"]
+    manifest.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="'author' is a required property"):
+        migrate(manifest, repository)
+
+
+def test_review_manifest_collects_author_for_manual_review(tmp_path: Path) -> None:
+    from brane_package_migrate.review import review_manifest
+
+    manifest = tmp_path / "review.yml"
+    write_manifest(discover(tmp_path), manifest)
+    candidate_dir = tmp_path / "incoming"
+    candidate_dir.mkdir()
+    (candidate_dir / "container.yml").write_text(
+        "name: incoming\nversion: 1.0.0\n", encoding="utf-8"
+    )
+    manifest.unlink()
+    write_manifest(discover(tmp_path), manifest)
+
+    answers = iter(["Package Team", "packages@example.invalid", "reusable", "manual-review"])
+    schema = Path(__file__).resolve().parents[1] / "schemas" / "migration-manifest.schema.yml"
+    review_manifest(manifest, schema, input_fn=lambda _: next(answers), output_fn=lambda _: None)
+
+    candidate = yaml.safe_load(manifest.read_text(encoding="utf-8"))["candidates"][0]
+    assert candidate["author"] == {
+        "name": "Package Team",
+        "contact": "packages@example.invalid",
+    }
+    assert candidate["classification"] == "reusable"
+    assert candidate["action"] == "manual-review"
+
+
+def test_review_manifest_collects_missing_curation_for_migration(tmp_path: Path) -> None:
+    from brane_package_migrate.review import review_manifest
+
+    source = tmp_path / "source"
+    candidate_dir = source / "incoming"
+    candidate_dir.mkdir(parents=True)
+    (candidate_dir / "container.yml").write_text(
+        "name: incoming\nversion: 1.0.0\n", encoding="utf-8"
+    )
+    manifest = tmp_path / "review.yml"
+    write_manifest(discover(source), manifest)
+
+    answers = iter(
+        [
+            "Package Team",
+            "",
+            "reusable",
+            "migrate",
+            "",
+            "candidate",
+            "Reusable pandas helper",
+            "",
+            "x86_64",
+            "3.0.0-test+dcf91ca6",
+            "yes",
+            "none",
+        ]
+    )
+    schema = Path(__file__).resolve().parents[1] / "schemas" / "migration-manifest.schema.yml"
+    review_manifest(manifest, schema, input_fn=lambda _: next(answers), output_fn=lambda _: None)
+
+    candidate = yaml.safe_load(manifest.read_text(encoding="utf-8"))["candidates"][0]
+    assert candidate["target_path"] == "packages/incoming"
+    assert candidate["author"] == {"name": "Package Team"}
+    assert candidate["curation"] == {
+        "status": "candidate",
+        "description": "Reusable pandas helper",
+        "maintainers": ["Package Team"],
+        "compatibility": {
+            "architectures": ["x86_64"],
+            "brane_baseline": "3.0.0-test+dcf91ca6",
+        },
+        "data_handling": {
+            "accepts_user_data": True,
+            "bundled_data": "none",
+        },
+    }

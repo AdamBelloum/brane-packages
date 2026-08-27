@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 from typing import Any
@@ -9,7 +10,11 @@ from typing import Any
 import yaml
 
 from brane_package_migrate.repository import validate_repository
-from brane_package_migrate.validation import load_yaml_mapping, validate_document
+from brane_package_migrate.validation import (
+    load_yaml_mapping,
+    validate_document,
+    validate_mapping,
+)
 
 _CLASSIFICATION_TARGETS = {
     "reusable": ("shared-package", "packages"),
@@ -21,7 +26,6 @@ def _safe_relative_path(value: str, root: Path, label: str) -> Path:
     path = Path(value)
     if path.is_absolute() or ".." in path.parts:
         raise ValueError(f"{label} must be a relative path without '..': {value!r}")
-
     return root / path
 
 
@@ -39,14 +43,63 @@ def _reject_symlinks(directory: Path) -> None:
             raise ValueError(f"Refusing candidate containing a symlink: {path}")
 
 
+def _error_detail(errors: list[str]) -> str:
+    return "\n".join(f"  - {error}" for error in errors)
+
+
+def _generated_metadata(
+    *,
+    container: dict[str, Any],
+    candidate: dict[str, Any],
+    source: dict[str, Any],
+    classification: str,
+    source_root: Path,
+) -> dict[str, Any]:
+    name = container.get("name")
+    version = container.get("version")
+    if not isinstance(name, str) or not name:
+        raise ValueError("container.yml requires a non-empty string 'name'")
+    if not isinstance(version, str) or not version:
+        raise ValueError("container.yml requires a non-empty string 'version'")
+
+    metadata_classification, _ = _CLASSIFICATION_TARGETS[classification]
+    curation = candidate["curation"]
+
+    provenance: dict[str, Any] = {
+        "type": source["type"],
+        "location": str(source_root),
+        "source_path": candidate["source_path"],
+        "imported_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if "revision" in source:
+        provenance["revision"] = source["revision"]
+
+    metadata: dict[str, Any] = {
+        "schema_version": "1.0",
+        "name": name,
+        "version": version,
+        "classification": metadata_classification,
+        "status": curation["status"],
+        "description": curation["description"],
+        "maintainers": curation["maintainers"],
+        "source": provenance,
+        "compatibility": curation["compatibility"],
+        "data_handling": curation["data_handling"],
+    }
+    for field in ("licence", "notes"):
+        if field in curation:
+            metadata[field] = curation[field]
+
+    return metadata
+
+
 def _load_approved_candidates(
     manifest_path: Path, repository_root: Path
 ) -> list[dict[str, Any]]:
     manifest_schema = repository_root / "schemas" / "migration-manifest.schema.yml"
     errors = validate_document(manifest_path, manifest_schema)
     if errors:
-        detail = "\n".join(f"  - {error}" for error in errors)
-        raise ValueError(f"Migration manifest validation failed:\n{detail}")
+        raise ValueError(f"Migration manifest validation failed:\n{_error_detail(errors)}")
 
     manifest = load_yaml_mapping(manifest_path)
     source = manifest["source"]
@@ -74,11 +127,11 @@ def _load_approved_candidates(
                 f"'reusable' or 'fixture'"
             )
 
-        if any(finding["severity"] == "blocking" for finding in candidate.get("findings", [])):
+        if any(
+            finding["severity"] == "blocking"
+            for finding in candidate.get("findings", [])
+        ):
             raise ValueError(f"{label}: migration is blocked by a blocking finding")
-
-        if "target_path" not in candidate:
-            raise ValueError(f"{label}: action 'migrate' requires target_path")
 
         candidate_dir = _safe_relative_path(
             candidate["source_path"], source_root, f"{label}.source_path"
@@ -87,23 +140,30 @@ def _load_approved_candidates(
             raise ValueError(f"{label}: source candidate is not a directory: {candidate_dir}")
         _reject_symlinks(candidate_dir)
 
-        metadata_path = candidate_dir / "package.yml"
-        if not metadata_path.is_file():
-            raise ValueError(f"{label}: source candidate lacks required package.yml")
+        container_path = candidate_dir / "container.yml"
+        if not container_path.is_file():
+            raise ValueError(f"{label}: source candidate lacks required container.yml")
 
-        metadata_errors = validate_document(metadata_path, metadata_schema)
+        try:
+            container = load_yaml_mapping(container_path)
+            metadata = _generated_metadata(
+                container=container,
+                candidate=candidate,
+                source=source,
+                classification=classification,
+                source_root=source_root,
+            )
+        except ValueError as error:
+            raise ValueError(f"{label}: invalid container.yml: {error}") from error
+
+        metadata_errors = validate_mapping(metadata, metadata_schema)
         if metadata_errors:
-            detail = "\n".join(f"  - {error}" for error in metadata_errors)
-            raise ValueError(f"{label}: source package.yml is invalid:\n{detail}")
-        metadata = load_yaml_mapping(metadata_path)
-
-        metadata_classification, target_root = _CLASSIFICATION_TARGETS[classification]
-        if metadata["classification"] != metadata_classification:
             raise ValueError(
-                f"{label}: manifest classification does not match package.yml "
-                f"classification"
+                f"{label}: generated package.yml is invalid:\n"
+                f"{_error_detail(metadata_errors)}"
             )
 
+        _, target_root = _CLASSIFICATION_TARGETS[classification]
         target_path = _safe_relative_path(
             candidate["target_path"], repository_root, f"{label}.target_path"
         )
@@ -119,7 +179,9 @@ def _load_approved_candidates(
         if target_path in target_paths:
             raise ValueError(f"{label}: duplicate migration target: {target_path}")
         if metadata["name"] in package_names:
-            raise ValueError(f"{label}: duplicate migrated package name: {metadata['name']!r}")
+            raise ValueError(
+                f"{label}: duplicate migrated package name: {metadata['name']!r}"
+            )
 
         target_paths.add(target_path)
         package_names.add(metadata["name"])
@@ -139,8 +201,9 @@ def migrate(manifest_path: Path, repository_root: Path, *, execute: bool = False
     root = repository_root.resolve()
     existing_errors = validate_repository(root)
     if existing_errors:
-        detail = "\n".join(f"  - {error}" for error in existing_errors)
-        raise ValueError(f"Repository is invalid before migration:\n{detail}")
+        raise ValueError(
+            f"Repository is invalid before migration:\n{_error_detail(existing_errors)}"
+        )
 
     approved = _load_approved_candidates(manifest_path, root)
     if not execute:
@@ -159,25 +222,30 @@ def migrate(manifest_path: Path, repository_root: Path, *, execute: bool = False
             shutil.copytree(item["source"], target)
 
             metadata = item["metadata"]
-            entry: dict[str, Any] = {
-                "name": metadata["name"],
-                "classification": metadata["classification"],
-                "status": metadata["status"],
-                "path": target.relative_to(root).as_posix(),
-                "maintainers": metadata["maintainers"],
-                "latest_version": metadata["version"],
-            }
-            if "description" in metadata:
-                entry["description"] = metadata["description"]
-            catalogue["packages"].append(entry)
+            with (target / "package.yml").open("w", encoding="utf-8") as handle:
+                yaml.safe_dump(metadata, handle, sort_keys=False, allow_unicode=True)
+
+            catalogue["packages"].append(
+                {
+                    "name": metadata["name"],
+                    "classification": metadata["classification"],
+                    "status": metadata["status"],
+                    "path": target.relative_to(root).as_posix(),
+                    "maintainers": metadata["maintainers"],
+                    "latest_version": metadata["version"],
+                    "description": metadata["description"],
+                }
+            )
 
         with catalogue_path.open("w", encoding="utf-8") as handle:
             yaml.safe_dump(catalogue, handle, sort_keys=False, allow_unicode=True)
 
         resulting_errors = validate_repository(root)
         if resulting_errors:
-            detail = "\n".join(f"  - {error}" for error in resulting_errors)
-            raise ValueError(f"Repository is invalid after migration:\n{detail}")
+            raise ValueError(
+                f"Repository is invalid after migration:\n"
+                f"{_error_detail(resulting_errors)}"
+            )
     except Exception:
         for target in reversed(created_targets):
             shutil.rmtree(target, ignore_errors=True)
