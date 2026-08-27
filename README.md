@@ -33,7 +33,8 @@ tools/           The package discovery and migration utility
 1. Run the discovery command against a source directory or repository checkout.
 1. Review the generated migration manifest and its findings.
 1. Mark only approved candidates with action: migrate.
-1. Run migration in dry-run mode, then execute it.
+1. Validate the reviewed manifest against its schema.
+1. Migrate only through the controlled migration command once it is available.
 1. Validate metadata, catalogue entries, and repository safety checks.
 1. Open a pull request; merge only after review and required checks pass.
 1. The discovery and migration commands will be documented in docs/package-intake.md as the tooling is added.
@@ -43,4 +44,4 @@ tools/           The package discovery and migration utility
 - Prefer deterministic, reviewable transformations over heuristic copying.
 - Preserve provenance: migrated package metadata records source location and revision.
 - Keep the shared catalogue small, explicit, and compatible with the pinned Brane deployment baseline.
-- Treat package source as potentially unsafe until reviewed. EOF
+- Treat package source as potentially unsafe until reviewed.

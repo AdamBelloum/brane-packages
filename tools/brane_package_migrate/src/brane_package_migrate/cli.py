@@ -8,6 +8,7 @@ import sys
 
 from brane_package_migrate import __version__
 from brane_package_migrate.discovery import discover, write_manifest
+from brane_package_migrate.repository import validate_repository
 from brane_package_migrate.validation import validate_document
 
 
@@ -63,12 +64,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON Schema expressed as YAML.",
     )
 
+    repository_parser = subcommands.add_parser(
+        "validate-repository",
+        help="Validate the catalogue, package metadata, and package layout.",
+    )
+    repository_parser.add_argument(
+        "--repository-root",
+        type=Path,
+        default=Path("."),
+        help="Repository root to validate (default: current directory).",
+    )
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "validate-repository":
+        errors = validate_repository(args.repository_root)
+        if errors:
+            print("Repository validation failed:", file=sys.stderr)
+            for error in errors:
+                print(f"  - {error}", file=sys.stderr)
+            return 1
+
+        print(f"Repository validation passed: {args.repository_root.resolve()}")
+        return 0
 
     if args.command == "validate":
         try:

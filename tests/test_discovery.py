@@ -69,3 +69,107 @@ def test_generated_empty_manifest_conforms_to_migration_schema(tmp_path: Path) -
 
     schema = Path(__file__).resolve().parents[1] / "schemas" / "migration-manifest.schema.yml"
     assert validate_document(output, schema) == []
+
+
+def _valid_package_metadata(name: str, classification: str) -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "name": name,
+        "version": "1.2.3",
+        "classification": classification,
+        "status": "candidate",
+        "maintainers": ["Package Team"],
+        "source": {
+            "type": "manually-created",
+            "location": "this repository",
+            "source_path": f"packages/{name}",
+        },
+        "compatibility": {
+            "architectures": ["x86_64"],
+            "brane_baseline": "3.0.0-test+dcf91ca6",
+        },
+        "data_handling": {
+            "accepts_user_data": False,
+            "bundled_data": "none",
+        },
+    }
+
+
+def _write_validation_repository(tmp_path: Path) -> Path:
+    repository = tmp_path / "repository"
+    (repository / "catalogue").mkdir(parents=True)
+    (repository / "schemas").mkdir()
+    (repository / "packages" / "example").mkdir(parents=True)
+
+    project_root = Path(__file__).resolve().parents[1]
+    for schema_name in (
+        "package-catalogue.schema.yml",
+        "package-metadata.schema.yml",
+    ):
+        (repository / "schemas" / schema_name).write_text(
+            (project_root / "schemas" / schema_name).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+    yaml.safe_dump(
+        {
+            "schema_version": "1.0",
+            "packages": [
+                {
+                    "name": "example",
+                    "classification": "shared-package",
+                    "status": "candidate",
+                    "path": "packages/example",
+                    "maintainers": ["Package Team"],
+                    "latest_version": "1.2.3",
+                }
+            ],
+        },
+        (repository / "catalogue" / "packages.yml").open("w", encoding="utf-8"),
+        sort_keys=False,
+    )
+    yaml.safe_dump(
+        _valid_package_metadata("example", "shared-package"),
+        (repository / "packages" / "example" / "package.yml").open(
+            "w", encoding="utf-8"
+        ),
+        sort_keys=False,
+    )
+    return repository
+
+
+def test_repository_validation_accepts_matching_catalogue_and_metadata(
+    tmp_path: Path,
+) -> None:
+    from brane_package_migrate.repository import validate_repository
+
+    assert validate_repository(_write_validation_repository(tmp_path)) == []
+
+
+def test_repository_validation_rejects_unindexed_package_directory(
+    tmp_path: Path,
+) -> None:
+    from brane_package_migrate.repository import validate_repository
+
+    repository = _write_validation_repository(tmp_path)
+    (repository / "packages" / "unindexed").mkdir()
+
+    assert validate_repository(repository) == [
+        "Unindexed shared-package directory: packages/unindexed"
+    ]
+
+
+def test_repository_validation_rejects_catalogue_metadata_mismatch(
+    tmp_path: Path,
+) -> None:
+    from brane_package_migrate.repository import validate_repository
+
+    repository = _write_validation_repository(tmp_path)
+    metadata_path = repository / "packages" / "example" / "package.yml"
+    metadata = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
+    metadata["status"] = "stable"
+    metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
+
+    assert validate_repository(repository) == [
+        "catalogue entry 'example': 'status' does not match packages/example/package.yml"
+    ]
