@@ -1,0 +1,66 @@
+"$schema": "https://json-schema.org/draft/2020-12/schema"
+title: "Brane package catalogue"
+description: "Index of shared Brane packages and internal test fixtures maintained in this repository."
+type: object
+additionalProperties: false
+
+required:
+  - schema_version
+  - packages
+
+properties:
+  schema_version:
+    type: string
+    const: "1.0"
+
+  packages:
+    type: array
+    uniqueItems: true
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - classification
+        - status
+        - path
+        - maintainers
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9_]*$"
+
+        classification:
+          type: string
+          enum:
+            - shared-package
+            - test-fixture
+
+        status:
+          type: string
+          enum:
+            - intake
+            - candidate
+            - stable
+            - deprecated
+            - retired
+
+        path:
+          type: string
+          pattern: "^(packages|test-fixtures)/[a-z][a-z0-9_]*$"
+
+        maintainers:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+
+        description:
+          type: string
+
+        latest_version:
+          type: string
+
+        metadata_file:
+          type: string

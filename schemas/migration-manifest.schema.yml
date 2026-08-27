@@ -1,0 +1,77 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: Brane package migration manifest
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - source
+  - candidates
+properties:
+  schema_version:
+    const: "1.0"
+  source:
+    type: object
+    additionalProperties: false
+    required:
+      - type
+      - location
+      - acquired_at
+    properties:
+      type:
+        enum: [local-path, git]
+      location:
+        type: string
+        minLength: 1
+      revision:
+        type: string
+        minLength: 1
+      acquired_at:
+        type: string
+        format: date-time
+  candidates:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - source_path
+        - classification
+        - action
+      properties:
+        source_path:
+          type: string
+          minLength: 1
+        target_path:
+          type: string
+          minLength: 1
+        discovered_name:
+          type: string
+          minLength: 1
+        classification:
+          enum: [reusable, fixture, unsupported, needs-review]
+        action:
+          enum: [manual-review, migrate, ignore]
+        review_notes:
+          type: string
+        review_required:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [severity, message]
+            properties:
+              severity:
+                enum: [blocking, warning, information]
+              message:
+                type: string
+                minLength: 1
+        packages:
+          type: array
+          items:
+            type: string
+            minLength: 1

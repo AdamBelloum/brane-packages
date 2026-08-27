@@ -1,0 +1,58 @@
+# macOS and editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Credentials, keys, certificates, and tokens
+certs/
+policy_tokens/
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.csr
+*.jwt
+*.token
+*_secret.json
+*_keys.json
+
+# Data and local state
+datasets/
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated build products and caches
+target/
+build/
+dist/
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Archives and package artefacts generated during local testing
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+
+# Intake working directories; reviewed manifests remain tracked
+intake/work/
+intake/source/
