@@ -8,6 +8,7 @@ import sys
 
 from brane_package_migrate import __version__
 from brane_package_migrate.discovery import discover, write_manifest
+from brane_package_migrate.migration import migrate
 from brane_package_migrate.repository import validate_repository
 from brane_package_migrate.validation import validate_document
 
@@ -64,6 +65,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON Schema expressed as YAML.",
     )
 
+    migrate_parser = subcommands.add_parser(
+        "migrate",
+        help="Copy explicitly approved, metadata-valid candidates into the repository.",
+    )
+    migrate_parser.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help="Reviewed migration manifest.",
+    )
+    migrate_parser.add_argument(
+        "--repository-root",
+        type=Path,
+        default=Path("."),
+        help="Destination repository root (default: current directory).",
+    )
+    migrate_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Perform the copy; without this flag, validate and report a dry run.",
+    )
+
     repository_parser = subcommands.add_parser(
         "validate-repository",
         help="Validate the catalogue, package metadata, and package layout.",
@@ -81,6 +104,23 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "migrate":
+        try:
+            targets = migrate(
+                args.manifest,
+                args.repository_root,
+                execute=args.execute,
+            )
+        except (OSError, ValueError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+
+        mode = "Migrated" if args.execute else "Dry run passed for"
+        print(f"{mode} {len(targets)} package(s):")
+        for target in targets:
+            print(f"  - {target}")
+        return 0
 
     if args.command == "validate-repository":
         errors = validate_repository(args.repository_root)

@@ -103,6 +103,7 @@ def _write_validation_repository(tmp_path: Path) -> Path:
 
     project_root = Path(__file__).resolve().parents[1]
     for schema_name in (
+        "migration-manifest.schema.yml",
         "package-catalogue.schema.yml",
         "package-metadata.schema.yml",
     ):
@@ -172,4 +173,146 @@ def test_repository_validation_rejects_catalogue_metadata_mismatch(
 
     assert validate_repository(repository) == [
         "catalogue entry 'example': 'status' does not match packages/example/package.yml"
+    ]
+
+
+def _write_migration_manifest(
+    repository: Path,
+    source: Path,
+    *,
+    action: str = "migrate",
+    findings: list[dict[str, str]] | None = None,
+) -> Path:
+    manifest = {
+        "schema_version": "1.0",
+        "source": {
+            "type": "local-path",
+            "location": str(source),
+            "acquired_at": "2026-08-27T12:00:00+00:00",
+        },
+        "candidates": [
+            {
+                "source_path": "incoming",
+                "target_path": "packages/incoming",
+                "classification": "reusable",
+                "action": action,
+                "findings": findings or [],
+            }
+        ],
+    }
+    path = repository / "intake" / "incoming.yml"
+    path.parent.mkdir()
+    path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def _write_migration_source(tmp_path: Path) -> Path:
+    source = tmp_path / "source"
+    incoming = source / "incoming"
+    incoming.mkdir(parents=True)
+    metadata = _valid_package_metadata("incoming", "shared-package")
+    metadata["source"]["source_path"] = "incoming"
+    (incoming / "package.yml").write_text(
+        yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8"
+    )
+    (incoming / "branelet.yml").write_text("name: incoming\n", encoding="utf-8")
+    return source
+
+
+def test_migration_dry_run_is_non_destructive(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import migrate
+
+    repository = _write_validation_repository(tmp_path)
+    source = _write_migration_source(tmp_path)
+    manifest = _write_migration_manifest(repository, source)
+
+    assert migrate(manifest, repository) == ["packages/incoming"]
+    assert not (repository / "packages" / "incoming").exists()
+
+
+def test_migration_copies_metadata_valid_package_and_updates_catalogue(
+    tmp_path: Path,
+) -> None:
+    from brane_package_migrate.migration import migrate
+    from brane_package_migrate.repository import validate_repository
+
+    repository = _write_validation_repository(tmp_path)
+    source = _write_migration_source(tmp_path)
+    manifest = _write_migration_manifest(repository, source)
+
+    assert migrate(manifest, repository, execute=True) == ["packages/incoming"]
+    assert (repository / "packages" / "incoming" / "branelet.yml").is_file()
+
+    catalogue = yaml.safe_load(
+        (repository / "catalogue" / "packages.yml").read_text(encoding="utf-8")
+    )
+    assert catalogue["packages"][-1]["name"] == "incoming"
+    assert catalogue["packages"][-1]["latest_version"] == "1.2.3"
+    assert validate_repository(repository) == []
+
+
+def test_migration_refuses_a_candidate_with_a_blocking_finding(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import migrate
+
+    repository = _write_validation_repository(tmp_path)
+    source = _write_migration_source(tmp_path)
+    manifest = _write_migration_manifest(
+        repository,
+        source,
+        findings=[{"severity": "blocking", "message": "Sensitive material found"}],
+    )
+
+    with pytest.raises(ValueError, match="migration is blocked"):
+        migrate(manifest, repository, execute=True)
+
+    assert not (repository / "packages" / "incoming").exists()
+
+
+def test_migration_refuses_a_symlinked_source_candidate(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import migrate
+
+    repository = _write_validation_repository(tmp_path)
+    source = _write_migration_source(tmp_path)
+    incoming = source / "incoming"
+    actual_source = source / "actual-incoming"
+    incoming.rename(actual_source)
+    incoming.symlink_to(actual_source.name, target_is_directory=True)
+    manifest = _write_migration_manifest(repository, source)
+
+    with pytest.raises(ValueError, match="containing a symlink"):
+        migrate(manifest, repository, execute=True)
+
+    assert not (repository / "packages" / "incoming").exists()
+
+
+def test_migration_removes_a_partial_target_when_copy_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brane_package_migrate import migration
+
+    repository = _write_validation_repository(tmp_path)
+    source = _write_migration_source(tmp_path)
+    manifest = _write_migration_manifest(repository, source)
+
+    def failing_copytree(_: Path, target: Path) -> None:
+        target.mkdir()
+        raise OSError("simulated copy failure")
+
+    monkeypatch.setattr(migration.shutil, "copytree", failing_copytree)
+
+    with pytest.raises(OSError, match="simulated copy failure"):
+        migration.migrate(manifest, repository, execute=True)
+
+    assert not (repository / "packages" / "incoming").exists()
+    assert yaml.safe_load(
+        (repository / "catalogue" / "packages.yml").read_text(encoding="utf-8")
+    )["packages"] == [
+        {
+            "name": "example",
+            "classification": "shared-package",
+            "status": "candidate",
+            "path": "packages/example",
+            "maintainers": ["Package Team"],
+            "latest_version": "1.2.3",
+        }
     ]
