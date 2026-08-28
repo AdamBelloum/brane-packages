@@ -1,2 +1,10 @@
-schema_version: "1.0"
-packages: []
+schema_version: '1.0'
+packages:
+- name: hello_world
+  classification: test-fixture
+  status: candidate
+  path: test-fixtures/hello_world
+  maintainers:
+  - Adam
+  latest_version: 1.0.0
+  description: Hello world test example

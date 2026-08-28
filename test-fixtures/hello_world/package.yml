@@ -1,0 +1,20 @@
+schema_version: '1.0'
+name: hello_world
+version: 1.0.0
+classification: test-fixture
+status: candidate
+description: Hello word test example
+maintainers:
+- Adam
+source:
+  type: local-path
+  location: /Users/adambelloum/Documents/brane-packages/intake/source
+  source_path: hello_world
+  imported_at: '2026-08-28T08:34:30.808229+00:00'
+compatibility:
+  architectures:
+  - x86_64
+  brane_baseline: 3.0.0-test+dcf91ca6
+data_handling:
+  accepts_user_data: true
+  bundled_data: none
