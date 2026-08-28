@@ -1,0 +1,33 @@
+schema_version: '1.0'
+source:
+  type: local-path
+  location: /Users/adambelloum/Documents/brane-packages/intake/source/minmax
+  acquired_at: '2026-08-28T09:15:38.822974+00:00'
+candidates:
+- source_path: .
+  discovered_name: minmax
+  classification: reusable
+  action: migrate
+  review_required:
+  - Confirm this directory is a valid Brane package.
+  - Review all findings and remove sensitive or generated material.
+  - Identify the package author or responsible team in the manifest.
+  - Set an explicit classification and migration action.
+  findings: []
+  author:
+    name: Adam
+    contact: A.S.Z.Belloum@uva.nl
+  curation:
+    status: candidate
+    description: Computes the minimum and maximum values in a numeric dataset and
+      writes the results to the Brane result directory.
+    maintainers:
+    - Adam
+    compatibility:
+      architectures:
+      - x86_64
+      brane_baseline: Brane 3.0.0-test+dcf91ca6
+    data_handling:
+      accepts_user_data: true
+      bundled_data: none
+  target_path: packages/minmax

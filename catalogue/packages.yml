@@ -8,3 +8,12 @@ packages:
   - Adam
   latest_version: 1.0.0
   description: Hello world test example
+- name: minmax
+  classification: shared-package
+  status: candidate
+  path: packages/minmax
+  maintainers:
+  - Adam
+  latest_version: 1.0.0
+  description: Computes the minimum and maximum values in a numeric dataset and writes
+    the results to the Brane result directory.

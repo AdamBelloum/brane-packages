@@ -1,0 +1,45 @@
+# Package metadata
+name: minmax
+version: 1.0.0
+kind: ecu
+description: Computes the minimum or maximum numeric value in a named column of a CSV dataset.
+
+# Package runtime assets
+files:
+- minmax.py
+
+# Called for every action invocation
+entrypoint:
+  kind: task
+  exec: minmax.py
+
+# Runtime dependencies supplied in the package container
+dependencies:
+- python3
+
+actions:
+  max:
+    command:
+      args:
+      - max
+    input:
+    - name: column
+      type: string
+    - name: file
+      type: Data
+    output:
+    - name: output
+      type: IntermediateResult
+
+  min:
+    command:
+      args:
+      - min
+    input:
+    - name: column
+      type: string
+    - name: file
+      type: Data
+    output:
+    - name: output
+      type: IntermediateResult
