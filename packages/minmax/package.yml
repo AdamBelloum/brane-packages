@@ -1,0 +1,21 @@
+schema_version: '1.0'
+name: minmax
+version: 1.0.0
+classification: shared-package
+status: candidate
+description: Computes the minimum and maximum values in a numeric dataset and writes
+  the results to the Brane result directory.
+maintainers:
+- Adam
+source:
+  type: local-path
+  location: /Users/adambelloum/Documents/brane-packages/intake/source/minmax
+  source_path: .
+  imported_at: '2026-08-28T09:24:35.928349+00:00'
+compatibility:
+  architectures:
+  - x86_64
+  brane_baseline: Brane 3.0.0-test+dcf91ca6
+data_handling:
+  accepts_user_data: true
+  bundled_data: none
