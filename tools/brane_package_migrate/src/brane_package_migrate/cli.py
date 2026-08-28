@@ -8,7 +8,7 @@ import sys
 
 from brane_package_migrate import __version__
 from brane_package_migrate.discovery import discover, write_manifest
-from brane_package_migrate.migration import migrate
+from brane_package_migrate.migration import migrate, remove_package
 from brane_package_migrate.repository import validate_repository
 from brane_package_migrate.review import review_manifest
 from brane_package_migrate.validation import validate_document
@@ -105,6 +105,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Perform the copy; without this flag, validate and report a dry run.",
     )
 
+
+    remove_parser = subcommands.add_parser(
+        "remove",
+        help="Remove one published package and its catalogue entry atomically.",
+    )
+    remove_parser.add_argument(
+        "--name",
+        required=True,
+        help="Published package name to remove.",
+    )
+    remove_parser.add_argument(
+        "--repository-root",
+        type=Path,
+        default=Path("."),
+        help="Repository root to update (default: current directory).",
+    )
+    remove_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Perform the removal; without this flag, validate and report a dry run.",
+    )
+
     repository_parser = subcommands.add_parser(
         "validate-repository",
         help="Validate the catalogue, package metadata, and package layout.",
@@ -143,6 +165,24 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         mode = "Migrated" if args.execute else "Dry run passed for"
+        print(f"{mode} {len(targets)} package(s):")
+        for target in targets:
+            print(f"  - {target}")
+        return 0
+
+
+    if args.command == "remove":
+        try:
+            targets = remove_package(
+                args.name,
+                args.repository_root,
+                execute=args.execute,
+            )
+        except (OSError, ValueError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+
+        mode = "Removed" if args.execute else "Dry run passed for removal of"
         print(f"{mode} {len(targets)} package(s):")
         for target in targets:
             print(f"  - {target}")

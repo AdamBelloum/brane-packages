@@ -56,3 +56,7 @@ venv/
 # Intake working directories; reviewed manifests remain tracked
 intake/work/
 intake/source/
+
+# Local package-wizard recovery files and generated functional-test logs
+/intake/*-functional-test.log
+/package_dev_wizzard.sh.before-auditable-validation-report.bak
