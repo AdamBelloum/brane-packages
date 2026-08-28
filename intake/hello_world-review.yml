@@ -1,0 +1,32 @@
+schema_version: '1.0'
+source:
+  type: local-path
+  location: /Users/adambelloum/Documents/brane-packages/intake/source
+  acquired_at: '2026-08-28T08:19:57.119339+00:00'
+candidates:
+- source_path: hello_world
+  discovered_name: hello_world
+  classification: fixture
+  action: migrate
+  review_required:
+  - Confirm this directory is a valid Brane package.
+  - Review all findings and remove sensitive or generated material.
+  - Identify the package author or responsible team in the manifest.
+  - Set an explicit classification and migration action.
+  findings: []
+  author:
+    name: Adam
+    contact: A.S.Z.Belloum@uva.nl
+  curation:
+    status: candidate
+    description: Hello word test example
+    maintainers:
+    - Adam
+    compatibility:
+      architectures:
+      - x86_64
+      brane_baseline: 3.0.0-test+dcf91ca6
+    data_handling:
+      accepts_user_data: true
+      bundled_data: none
+  target_path: test-fixtures/hello_world
