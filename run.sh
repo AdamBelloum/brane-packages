@@ -194,6 +194,76 @@ MENU
     done
 }
 
+
+remove_published_package() {
+    local package_name branch typed_name
+
+    branch="$(git branch --show-current)"
+
+    if [[ -z "$branch" ]]; then
+        echo "error: Git is in a detached state. Switch to a maintainer branch first." >&2
+        return 1
+    fi
+
+    if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+        echo "A published package must not be removed directly on $branch."
+        echo "Create or switch to a maintainer working branch, then run this action again."
+        return 1
+    fi
+
+    echo
+    echo "Remove a published package"
+    echo "This is a maintainer-only local operation."
+    echo "The migration tool will remove both:"
+    echo "  - the published package directory; and"
+    echo "  - its matching catalogue/packages.yml entry."
+    echo
+    echo "No commit, push, Pull Request, or merge is performed by this script."
+    echo
+
+    package_name="$(prompt_value "Published package name" "")"
+
+    if [[ -z "$package_name" || "$package_name" == */* || ! "$package_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+        echo "Enter a valid package name only, without a path."
+        return 1
+    fi
+
+    echo
+    echo "Checking the planned removal without changing repository files..."
+    if ! "${PACKAGE_TOOL[@]}" remove --name "$package_name"; then
+        echo "No files were changed."
+        return 1
+    fi
+
+    echo
+    printf "Type the package name '%s' to confirm removal: " "$package_name"
+    read -r typed_name
+
+    if [[ "$typed_name" != "$package_name" ]]; then
+        echo "Package name did not match. Nothing was removed."
+        return 0
+    fi
+
+    if ! confirm "Remove the published package and its catalogue entry"; then
+        echo "Nothing was removed."
+        return 0
+    fi
+
+    if ! "${PACKAGE_TOOL[@]}" remove --name "$package_name" --execute; then
+        echo "Removal failed. The migration tool attempted to restore the original state."
+        return 1
+    fi
+
+    echo
+    echo "Published package and catalogue entry were removed locally."
+    echo
+    echo "Next maintainer steps:"
+    echo "  1. Validate: select 'Validate complete repository'."
+    echo "  2. Review:   git status --short"
+    echo "  3. Commit the deletion on the current branch."
+    echo "  4. Submit or update the maintainer Pull Request."
+}
+
 maintainer_menu() {
     while true; do
         cat <<'MENU'
@@ -203,6 +273,7 @@ Repository maintainer menu
   2. Validate complete repository
   3. Run automated tests
   4. Show changes to review in the Pull Request branch
+  5. Remove a published package for replacement or testing
   0. Return to role selection
 MENU
         printf 'Choose an action: '
@@ -212,6 +283,7 @@ MENU
             2) validate_repository ;;
             3) run_tests ;;
             4) show_pull_request_changes ;;
+            5) remove_published_package ;;
             0) return ;;
             *) echo "Choose a number from the menu." ;;
         esac

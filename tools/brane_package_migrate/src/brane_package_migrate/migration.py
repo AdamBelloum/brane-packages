@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
+import tempfile
 from typing import Any
 
 import yaml
@@ -253,3 +254,114 @@ def migrate(manifest_path: Path, repository_root: Path, *, execute: bool = False
         raise
 
     return [item["target"].relative_to(root).as_posix() for item in approved]
+
+
+def remove_package(
+    package_name: str,
+    repository_root: Path,
+    *,
+    execute: bool = False,
+) -> list[str]:
+    """Remove one published package and its catalogue entry atomically.
+
+    Without ``execute``, this validates and reports the planned removal without
+    changing repository files.
+    """
+    root = repository_root.resolve()
+
+    if (
+        not isinstance(package_name, str)
+        or not package_name
+        or "/" in package_name
+        or "\\" in package_name
+        or package_name in {".", ".."}
+    ):
+        raise ValueError("package name must be a non-empty package folder name")
+
+    existing_errors = validate_repository(root)
+    if existing_errors:
+        raise ValueError(
+            f"Repository is invalid before removal:\n{_error_detail(existing_errors)}"
+        )
+
+    catalogue_path = root / "catalogue" / "packages.yml"
+    catalogue = load_yaml_mapping(catalogue_path)
+    entries = catalogue.get("packages")
+
+    if not isinstance(entries, list):
+        raise ValueError("catalogue/packages.yml requires a 'packages' list")
+
+    matching_indexes = [
+        index
+        for index, entry in enumerate(entries)
+        if isinstance(entry, dict) and entry.get("name") == package_name
+    ]
+
+    if not matching_indexes:
+        raise ValueError(f"No catalogue entry exists for package {package_name!r}")
+
+    if len(matching_indexes) != 1:
+        raise ValueError(
+            f"Expected exactly one catalogue entry for {package_name!r}; "
+            f"found {len(matching_indexes)}"
+        )
+
+    entry_index = matching_indexes[0]
+    entry = entries[entry_index]
+    target_value = entry.get("path")
+
+    if not isinstance(target_value, str) or not target_value:
+        raise ValueError(
+            f"Catalogue entry {package_name!r} has no usable package path"
+        )
+
+    target = _safe_relative_path(
+        target_value,
+        root,
+        f"catalogue entry {package_name!r} path",
+    )
+    _reject_symlink_ancestors(target, root)
+
+    if target == root or not target.is_dir():
+        raise ValueError(
+            f"Catalogue entry {package_name!r} points to a missing package directory: "
+            f"{target_value}"
+        )
+
+    relative_target = target.relative_to(root).as_posix()
+
+    if not execute:
+        return [relative_target]
+
+    original_catalogue = catalogue_path.read_text(encoding="utf-8")
+
+    # The temporary directory is created beside the target so that moving the
+    # package aside remains on the same filesystem. This allows full rollback.
+    with tempfile.TemporaryDirectory(
+        dir=target.parent,
+        prefix=f".{target.name}-removal-",
+    ) as staging_directory:
+        staged_target = Path(staging_directory) / target.name
+
+        try:
+            shutil.move(str(target), str(staged_target))
+            entries.pop(entry_index)
+
+            with catalogue_path.open("w", encoding="utf-8") as handle:
+                yaml.safe_dump(catalogue, handle, sort_keys=False, allow_unicode=True)
+
+            resulting_errors = validate_repository(root)
+            if resulting_errors:
+                raise ValueError(
+                    f"Repository is invalid after removal:\n"
+                    f"{_error_detail(resulting_errors)}"
+                )
+        except Exception:
+            catalogue_path.write_text(original_catalogue, encoding="utf-8")
+
+            if staged_target.exists() and not target.exists():
+                shutil.move(str(staged_target), str(target))
+
+            raise
+
+    return [relative_target]

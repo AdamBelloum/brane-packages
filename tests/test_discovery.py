@@ -454,3 +454,43 @@ def test_review_manifest_collects_missing_curation_for_migration(tmp_path: Path)
             "bundled_data": "none",
         },
     }
+
+
+
+def test_package_removal_dry_run_is_non_destructive(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import remove_package
+
+    repository = _write_validation_repository(tmp_path)
+
+    assert remove_package("example", repository) == ["packages/example"]
+    assert (repository / "packages" / "example").is_dir()
+
+    catalogue = yaml.safe_load(
+        (repository / "catalogue" / "packages.yml").read_text(encoding="utf-8")
+    )
+    assert [entry["name"] for entry in catalogue["packages"]] == ["example"]
+
+
+def test_package_removal_deletes_directory_and_catalogue_entry(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import remove_package
+    from brane_package_migrate.repository import validate_repository
+
+    repository = _write_validation_repository(tmp_path)
+
+    assert remove_package("example", repository, execute=True) == ["packages/example"]
+    assert not (repository / "packages" / "example").exists()
+
+    catalogue = yaml.safe_load(
+        (repository / "catalogue" / "packages.yml").read_text(encoding="utf-8")
+    )
+    assert catalogue["packages"] == []
+    assert validate_repository(repository) == []
+
+
+def test_package_removal_refuses_an_unknown_package(tmp_path: Path) -> None:
+    from brane_package_migrate.migration import remove_package
+
+    repository = _write_validation_repository(tmp_path)
+
+    with pytest.raises(ValueError, match="No catalogue entry exists"):
+        remove_package("does-not-exist", repository)
