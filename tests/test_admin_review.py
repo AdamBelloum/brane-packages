@@ -121,7 +121,7 @@ def test_review_prepares_manual_test_record_without_executing_submitted_code(
     # script, including changes that have not yet been committed in PROJECT_ROOT.
     shutil.copy2(SCRIPT, seed / "package_admin_review.sh")
     git_command(seed, "add", "package_admin_review.sh")
-    git_command(seed, "commit", "-m", "Use package admin review script under test")
+    git_command(seed, "commit", "--allow-empty", "-m", "Use package admin review script under test")
 
     git_command(seed, "remote", "set-url", "origin", str(remote))
     git_command(seed, "push", "--force", "origin", "HEAD:main")
