@@ -3,7 +3,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-ROOT_DIR="$SCRIPT_DIR"
+ROOT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
 PYTHON="${PYTHON:-$ROOT_DIR/.venv/bin/python}"
 AUDIT_TOOL="${ADMIN_AUDIT_TOOL:-$ROOT_DIR/tools/admin_review_audit.py}"
 MIGRATOR="${MIGRATOR:-$ROOT_DIR/.venv/bin/brane-package-migrate}"
@@ -22,7 +22,7 @@ REQUESTED_PACKAGE=""
 usage() {
   cat <<'USAGE'
 Usage:
-  ./package_admin_review.sh [--branch <remote-branch> | --pr <number>] [--package <name-or-path>] [--keep-worktree]
+  ./scripts/admin/package_admin_review.sh [--branch <remote-branch> | --pr <number>] [--package <name-or-path>] [--keep-worktree]
 
 Interactively selects an open GitHub Pull Request when no --branch or --pr is
 provided from a terminal. Creates an isolated, detached review worktree from
