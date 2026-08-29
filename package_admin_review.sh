@@ -4,6 +4,8 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT_DIR="$SCRIPT_DIR"
+PYTHON="${PYTHON:-$ROOT_DIR/.venv/bin/python}"
+AUDIT_TOOL="${ADMIN_AUDIT_TOOL:-$ROOT_DIR/tools/admin_review_audit.py}"
 REVIEW_BASE="$ROOT_DIR/.admin-review"
 REPORT_DIR="$REVIEW_BASE/reports"
 WORKTREE_DIR=""
@@ -17,7 +19,7 @@ Usage:
   ./package_admin_review.sh --branch <remote-branch> [--keep-worktree]
 
 Creates an isolated, detached review worktree from origin/<remote-branch>.
-This initial version records the reviewed commit and creates a local report.
+Compares it with origin/main and records a structural package audit locally.
 It does not modify the submitted branch, publish a package, or merge a PR.
 
 Options:
@@ -67,6 +69,8 @@ done
 
 git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
   || fail "Not a Git repository: $ROOT_DIR"
+[[ -x "$PYTHON" ]] || fail "Pinned Python interpreter is unavailable: $PYTHON"
+[[ -f "$AUDIT_TOOL" ]] || fail "Structural audit tool is unavailable: $AUDIT_TOOL"
 
 git check-ref-format --branch "$BRANCH" >/dev/null 2>&1 \
   || fail "Invalid branch name: $BRANCH"
@@ -80,17 +84,24 @@ esac
 [[ -z "$(git -C "$ROOT_DIR" status --porcelain)" ]] \
   || fail 'The current checkout has uncommitted changes. Commit, stash, or remove them first.'
 
-mkdir -p "$REPORT_DIR" "$REVIEW_BASE/worktrees"
+mkdir -p "$REPORT_DIR" "$REVIEW_BASE/worktrees" "$REVIEW_BASE/audits"
+
+printf 'Fetching origin/main …\n'
+git -C "$ROOT_DIR" fetch --no-tags origin \
+  "refs/heads/main:refs/remotes/origin/main" \
+  || fail "Could not fetch origin/main."
 
 printf 'Fetching origin/%s …\n' "$BRANCH"
 git -C "$ROOT_DIR" fetch --no-tags origin \
   "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" \
   || fail "Could not fetch origin/$BRANCH."
 
+BASE_COMMIT="$(git -C "$ROOT_DIR" rev-parse "origin/main^{commit}")"
 REVIEW_COMMIT="$(git -C "$ROOT_DIR" rev-parse "origin/$BRANCH^{commit}")"
 TIMESTAMP="$(date '+%Y%m%d-%H%M%S')"
 WORKTREE_DIR="$REVIEW_BASE/worktrees/review-$TIMESTAMP"
 REPORT_PATH="$REPORT_DIR/review-$TIMESTAMP.md"
+AUDIT_JSON="$REVIEW_BASE/audits/audit-$TIMESTAMP.json"
 
 git -C "$ROOT_DIR" worktree add --detach "$WORKTREE_DIR" "$REVIEW_COMMIT" >/dev/null
 WORKTREE_CREATED=1
@@ -99,6 +110,7 @@ cat > "$REPORT_PATH" <<REPORT
 # Brane Package Administrator Review
 
 - **Review source branch:** \`origin/$BRANCH\`
+- **Base commit:** \`$BASE_COMMIT\`
 - **Reviewed commit:** \`$REVIEW_COMMIT\`
 - **Created:** \`$(date '+%Y-%m-%d %H:%M:%S %Z')\`
 - **Review worktree:** \`$WORKTREE_DIR\`
@@ -112,9 +124,78 @@ BRANE TEST:   NOT RUN
 DECISION:     REVIEW IN PROGRESS
 REPORT
 
+if ! "$PYTHON" "$AUDIT_TOOL" \
+  --worktree "$WORKTREE_DIR" \
+  --base "$BASE_COMMIT" \
+  --head "$REVIEW_COMMIT" \
+  --output "$AUDIT_JSON"; then
+  fail "Structural audit could not inspect the reviewed commit."
+fi
+
+"$PYTHON" - "$AUDIT_JSON" "$REPORT_PATH" <<'AUDIT_PY'
+from pathlib import Path
+import json
+import sys
+
+audit_path = Path(sys.argv[1])
+report_path = Path(sys.argv[2])
+audit = json.loads(audit_path.read_text(encoding="utf-8"))
+candidates = audit["candidates"]
+errors = [error for candidate in candidates for error in candidate["errors"]]
+
+lines = [
+    "",
+    "## Structural audit",
+    "",
+    f"- **Changed repository paths:** {len(audit['changed_paths'])}",
+    f"- **Changed package directories:** {len(candidates)}",
+]
+if not candidates:
+    audit_status = "FAILED"
+    lines.extend(
+        [
+            "- **Result:** FAILED",
+            "- No changed package directory was found below `packages/` or `test-fixtures/`.",
+        ]
+    )
+elif errors:
+    audit_status = "FAILED"
+    lines.append("- **Result:** FAILED")
+else:
+    audit_status = "PASSED"
+    lines.append("- **Result:** PASSED")
+
+for candidate in candidates:
+    lines.extend(
+        [
+            "",
+            f"### `{candidate['target_path']}`",
+            "",
+            f"- **Files:** {len(candidate['files'])}",
+            f"- **Matching intake manifest(s):** "
+            + (", ".join(f"`{item}`" for item in candidate["manifest_paths"]) or "none"),
+        ]
+    )
+    if candidate["errors"]:
+        lines.append("- **Findings:**")
+        lines.extend(f"  - FAIL: {finding}" for finding in candidate["errors"])
+    else:
+        lines.append("- **Findings:** PASS — structural requirements satisfied.")
+
+existing_report = report_path.read_text(encoding="utf-8")
+existing_report = existing_report.replace(
+    "AUDIT:        NOT RUN",
+    f"AUDIT:        {audit_status}",
+    1,
+)
+report_path.write_text(existing_report + "\n".join(lines) + "\n", encoding="utf-8")
+AUDIT_PY
+
 printf '\nReview environment prepared.\n'
 printf '  Source branch: %s\n' "origin/$BRANCH"
+printf '  Base commit: %s\n' "$BASE_COMMIT"
 printf '  Reviewed commit: %s\n' "$REVIEW_COMMIT"
+printf '  Structural audit evidence: %s\n' "$AUDIT_JSON"
 printf '  Report: %s\n' "$REPORT_PATH"
 
 if [[ "$KEEP_WORKTREE" -eq 1 ]]; then

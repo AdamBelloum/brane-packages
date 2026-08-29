@@ -23,6 +23,7 @@ def test_help_describes_branch_review_interface() -> None:
     assert "Usage:" in result.stdout
     assert "--branch <remote-branch>" in result.stdout
     assert "--keep-worktree" in result.stdout
+    assert "origin/main" in result.stdout
 
 
 def test_branch_is_required() -> None:
