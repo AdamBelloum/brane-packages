@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# File:    package_dev_wizzard.sh
+# File:    scripts/developer/package_dev_wizard.sh
 # Purpose: Guide a package author through preparing and submitting a new Brane
 #          package. This wizard never approves, merges, or deploys a package.
 # Version: 2.6.0
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 PYTHON="$ROOT_DIR/.venv/bin/python"
 MIGRATOR="$ROOT_DIR/.venv/bin/brane-package-migrate"
 SCHEMA="$ROOT_DIR/schemas/migration-manifest.schema.yml"

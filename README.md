@@ -25,10 +25,21 @@ docs/            Contributor, intake, review, and security guidance
 intake/          Reviewed migration manifests
 packages/        Curated reusable Brane packages
 schemas/         Versioned YAML/JSON Schema contracts
-scripts/         Validation and developer automation
+scripts/
+  admin/         Administrator-operated review workflows
+  developer/     Package-author development workflows
 test-fixtures/   Synthetic fixtures for tooling tests
+tests/           Automated regression tests
 tools/           The package discovery and migration utility
 ```
+
+## Script entry points
+
+- Administrator package review:
+  `./scripts/admin/package_admin_review.sh`
+- Package developer workflow:
+  `./scripts/developer/package_dev_wizard.sh`
+
 ## Initial workflow
 
 1. Run the discovery command against a source directory or repository checkout.

@@ -4,7 +4,7 @@ import subprocess
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = PROJECT_ROOT / "package_admin_review.sh"
+SCRIPT = PROJECT_ROOT / "scripts" / "admin" / "package_admin_review.sh"
 
 
 def run_admin_review(*arguments: str) -> subprocess.CompletedProcess[str]:
@@ -119,8 +119,9 @@ def test_review_prepares_manual_test_record_without_executing_submitted_code(
     )
     # The fixture remote must test the working-tree version of the review
     # script, including changes that have not yet been committed in PROJECT_ROOT.
-    shutil.copy2(SCRIPT, seed / "package_admin_review.sh")
-    git_command(seed, "add", "package_admin_review.sh")
+    (seed / "scripts" / "admin").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SCRIPT, seed / "scripts" / "admin" / "package_admin_review.sh")
+    git_command(seed, "add", "scripts/admin/package_admin_review.sh")
     git_command(seed, "commit", "--allow-empty", "-m", "Use package admin review script under test")
 
     git_command(seed, "remote", "set-url", "origin", str(remote))
@@ -168,7 +169,7 @@ def test_review_prepares_manual_test_record_without_executing_submitted_code(
     result = subprocess.run(
         [
             "bash",
-            str(administrator / "package_admin_review.sh"),
+            str(administrator / "scripts" / "admin" / "package_admin_review.sh"),
             "--branch",
             "submitted/hello-world-test",
         ],
