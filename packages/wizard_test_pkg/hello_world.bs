@@ -1,4 +1,0 @@
-import hello_world;
-
-#[on("client-node-2")]
- println(hello_world());
