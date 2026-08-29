@@ -134,6 +134,7 @@ cat > "$REPORT_PATH" <<REPORT
 AUDIT:        NOT RUN
 METADATA:     NOT RUN
 PACKAGE TEST: NOT RUN
+DECISION:     PENDING REVIEW
 CONTAINER:    NOT RUN
 BRANE TEST:   NOT RUN
 DECISION:     REVIEW IN PROGRESS
@@ -323,6 +324,10 @@ existing = report_path.read_text(encoding="utf-8").replace(
     "PACKAGE TEST: NOT RUN",
     "PACKAGE TEST: MANUAL REQUIRED",
     1,
+).replace(
+    "DECISION:     PENDING REVIEW",
+    "DECISION:     PENDING MANUAL TEST",
+    1,
 )
 section = f"""
 ## Metadata and repository validation
@@ -338,6 +343,14 @@ section = f"""
 - **Status:** MANUAL REQUIRED
 - **Policy:** This workflow never executes submitted package code.
 - **Manual test record:** `{test_record}`
+
+## Review decision
+
+**PENDING MANUAL TEST**
+
+No package is accepted, published, or merged by this workflow. An administrator
+must complete the manual functional-test record in an approved environment before
+making an explicit acceptance or rejection decision.
 """
 report_path.write_text(existing + section, encoding="utf-8")
 METADATA_PY
@@ -355,6 +368,7 @@ printf '  Reviewed commit: %s\n' "$REVIEW_COMMIT"
 printf '  Structural audit evidence: %s\n' "$AUDIT_JSON"
 printf '  Validation log: %s\n' "$VALIDATION_LOG"
 printf '  Manual test record: %s\n' "$TEST_RECORD"
+printf '  Decision: PENDING MANUAL TEST\n'
 printf '  Report: %s\n' "$REPORT_PATH"
 
 if [[ "$KEEP_WORKTREE" -eq 1 ]]; then

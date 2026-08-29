@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import subprocess
 
 
@@ -80,6 +81,12 @@ def test_review_prepares_manual_test_record_without_executing_submitted_code(
         capture_output=True,
         check=True,
     )
+    # The fixture remote must test the working-tree version of the review
+    # script, including changes that have not yet been committed in PROJECT_ROOT.
+    shutil.copy2(SCRIPT, seed / "package_admin_review.sh")
+    git_command(seed, "add", "package_admin_review.sh")
+    git_command(seed, "commit", "-m", "Use package admin review script under test")
+
     git_command(seed, "remote", "set-url", "origin", str(remote))
     git_command(seed, "push", "--force", "origin", "HEAD:main")
 
@@ -150,6 +157,8 @@ def test_review_prepares_manual_test_record_without_executing_submitted_code(
     assert "AUDIT:        PASSED" in report
     assert "METADATA:     PASSED" in report
     assert "PACKAGE TEST: MANUAL REQUIRED" in report
+    assert "## Review decision" in report
+    assert "**PENDING MANUAL TEST**" in report
     assert "test-fixtures/hello_world/test.sh" in report
     assert "Reviewed commit:" in record
     assert "Status:** MANUAL REQUIRED" in record
