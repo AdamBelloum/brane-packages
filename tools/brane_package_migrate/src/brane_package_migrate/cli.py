@@ -126,6 +126,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Perform the removal; without this flag, validate and report a dry run.",
     )
+    remove_parser.add_argument(
+        "--remove-review-evidence",
+        action="store_true",
+        help=(
+            "Remove the matching intake-review evidence in the same transaction. "
+            "Requires exactly one matching candidate."
+        ),
+    )
 
     repository_parser = subcommands.add_parser(
         "validate-repository",
@@ -177,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.name,
                 args.repository_root,
                 execute=args.execute,
+                remove_review_evidence=args.remove_review_evidence,
             )
         except (OSError, ValueError) as error:
             print(f"error: {error}", file=sys.stderr)
