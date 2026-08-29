@@ -256,16 +256,64 @@ def migrate(manifest_path: Path, repository_root: Path, *, execute: bool = False
     return [item["target"].relative_to(root).as_posix() for item in approved]
 
 
+def _find_review_evidence(
+    repository_root: Path,
+    target_path: str,
+) -> tuple[Path, dict[str, Any], int]:
+    """Resolve exactly one intake-review candidate for a catalogue target."""
+    intake_directory = repository_root / "intake"
+    manifest_schema = repository_root / "schemas" / "migration-manifest.schema.yml"
+    matches: list[tuple[Path, dict[str, Any], int]] = []
+
+    if intake_directory.exists():
+        _reject_symlink_ancestors(intake_directory, repository_root)
+        if intake_directory.is_symlink():
+            raise ValueError(f"Refusing intake directory symlink: {intake_directory}")
+
+        for manifest_path in sorted(intake_directory.glob("*-review.yml")):
+            if manifest_path.is_symlink():
+                raise ValueError(f"Refusing intake review manifest symlink: {manifest_path}")
+
+            manifest = load_yaml_mapping(manifest_path)
+            candidates = manifest.get("candidates")
+            if not isinstance(candidates, list):
+                continue
+
+            for index, candidate in enumerate(candidates):
+                if (
+                    isinstance(candidate, dict)
+                    and candidate.get("target_path") == target_path
+                ):
+                    errors = validate_mapping(manifest, manifest_schema)
+                    if errors:
+                        raise ValueError(
+                            f"Intake review manifest is invalid: {manifest_path}:\n"
+                            f"{_error_detail(errors)}"
+                        )
+                    matches.append((manifest_path, manifest, index))
+
+    if len(matches) != 1:
+        raise ValueError(
+            "Expected exactly one matching intake review candidate for "
+            f"{target_path!r}; found {len(matches)}"
+        )
+
+    return matches[0]
+
+
 def remove_package(
     package_name: str,
     repository_root: Path,
     *,
     execute: bool = False,
+    remove_review_evidence: bool = False,
 ) -> list[str]:
     """Remove one published package and its catalogue entry atomically.
 
     Without ``execute``, this validates and reports the planned removal without
-    changing repository files.
+    changing repository files. With ``remove_review_evidence``, the transaction
+    also removes exactly one matching reviewed intake candidate. A one-candidate
+    manifest is deleted; a shared manifest retains its unrelated candidates.
     """
     root = repository_root.resolve()
 
@@ -329,11 +377,20 @@ def remove_package(
         )
 
     relative_target = target.relative_to(root).as_posix()
+    review_evidence: tuple[Path, dict[str, Any], int] | None = None
+    if remove_review_evidence:
+        review_evidence = _find_review_evidence(root, relative_target)
 
     if not execute:
         return [relative_target]
 
     original_catalogue = catalogue_path.read_text(encoding="utf-8")
+    original_manifest: str | None = None
+    manifest_path: Path | None = None
+
+    if review_evidence is not None:
+        manifest_path = review_evidence[0]
+        original_manifest = manifest_path.read_text(encoding="utf-8")
 
     # The temporary directory is created beside the target so that moving the
     # package aside remains on the same filesystem. This allows full rollback.
@@ -350,6 +407,30 @@ def remove_package(
             with catalogue_path.open("w", encoding="utf-8") as handle:
                 yaml.safe_dump(catalogue, handle, sort_keys=False, allow_unicode=True)
 
+            if review_evidence is not None and manifest_path is not None:
+                _, manifest, candidate_index = review_evidence
+                candidates = manifest["candidates"]
+                if len(candidates) == 1:
+                    manifest_path.unlink()
+                else:
+                    candidates.pop(candidate_index)
+                    manifest_errors = validate_mapping(
+                        manifest,
+                        root / "schemas" / "migration-manifest.schema.yml",
+                    )
+                    if manifest_errors:
+                        raise ValueError(
+                            "Intake review manifest is invalid after evidence removal:\n"
+                            f"{_error_detail(manifest_errors)}"
+                        )
+                    with manifest_path.open("w", encoding="utf-8") as handle:
+                        yaml.safe_dump(
+                            manifest,
+                            handle,
+                            sort_keys=False,
+                            allow_unicode=True,
+                        )
+
             resulting_errors = validate_repository(root)
             if resulting_errors:
                 raise ValueError(
@@ -358,6 +439,10 @@ def remove_package(
                 )
         except Exception:
             catalogue_path.write_text(original_catalogue, encoding="utf-8")
+
+            if manifest_path is not None and original_manifest is not None:
+                manifest_path.parent.mkdir(parents=True, exist_ok=True)
+                manifest_path.write_text(original_manifest, encoding="utf-8")
 
             if staged_target.exists() and not target.exists():
                 shutil.move(str(staged_target), str(target))

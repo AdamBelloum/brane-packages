@@ -35,10 +35,34 @@ tools/           The package discovery and migration utility
 
 ## Script entry points
 
-- Administrator package review:
-  `./scripts/admin/package_admin_review.sh`
+- Administrator package lifecycle:
+  `./scripts/admin/package_admin.sh`
 - Package developer workflow:
   `./scripts/developer/package_dev_wizard.sh`
+
+## Administrator package lifecycle
+
+Start the administrator interface with `./scripts/admin/package_admin.sh`.
+
+It exposes only enabled curated-package operations:
+
+1. view all catalogue-backed shared packages and test fixtures;
+2. request removal of a selected catalogue entry.
+
+Removal requires an exact-name confirmation and always displays the package name,
+classification, and repository path first. The operation is performed in an isolated
+worktree: it validates the proposed change, removes the package directory and
+catalogue entry atomically, runs the applicable repository migration regression tests,
+pushes a dedicated branch, and creates a Pull Request automatically.
+
+Removal is evidence-aware. The selected catalogue path must match exactly one
+candidate in `intake/*-review.yml`. A one-candidate review manifest is removed with
+the package; in a shared manifest, only the selected candidate is removed and
+unrelated review evidence remains. The transaction rolls back package, catalogue,
+and manifest changes if validation fails.
+
+The lower-level `package_admin_review.sh` remains an implementation-level review
+workflow and is not the normal administrator entry point.
 
 ## Initial workflow
 
