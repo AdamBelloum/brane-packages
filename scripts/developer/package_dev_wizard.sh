@@ -3,8 +3,8 @@
 # File:    scripts/developer/package_dev_wizard.sh
 # Purpose: Guide a package author through preparing and submitting a new Brane
 #          package. This wizard never approves, merges, or deploys a package.
-# Version: 2.6.0
-# Date:    2026-08-28
+# Version: 2.7.0
+# Date:    2026-08-29
 # Author:  Adam Belloum
 # -----------------------------------------------------------------------------
 set -euo pipefail
@@ -13,6 +13,7 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 PYTHON="$ROOT_DIR/.venv/bin/python"
 MIGRATOR="$ROOT_DIR/.venv/bin/brane-package-migrate"
+GH="${GH:-gh}"
 SCHEMA="$ROOT_DIR/schemas/migration-manifest.schema.yml"
 INTAKE_DIR="$ROOT_DIR/intake"
 BRANE_BASELINE="${BRANE_BASELINE:-3.0.0}"
@@ -696,8 +697,8 @@ blank
 # STEP 5 — Commit and submit
 # ═════════════════════════════════════════════════════════════════════════════
 step 5 5 "Commit and submit"
-printf '%s\n' 'The package files are ready. The next steps commit them to your branch'
-printf '%s\n' 'and push the branch to GitHub so you can open a Pull Request.'
+printf '%s\n' 'The package files are ready. The next steps commit them to your branch,'
+printf '%s\n' 'push it to GitHub, and optionally create a Pull Request for review.'
 blank
 
 printf "  ${BOLD}Files created or changed:${RESET}\n"
@@ -768,6 +769,63 @@ if ! git -C "$ROOT_DIR" push -u origin "$BRANCH" 2>/dev/null; then
 fi
 ok "Branch pushed to GitHub: $BRANCH"
 
+# ── Pull Request creation ─────────────────────────────────────────────────────
+PR_URL=""
+PR_STATUS="manual"
+
+blank
+printf '%s\n' 'Your branch is ready for administrator review.'
+if [[ "$(yesno 'Create the Pull Request now' Y)" == yes ]]; then
+  if ! command -v "$GH" >/dev/null 2>&1; then
+    warn 'GitHub CLI is not installed, so the Pull Request must be created manually.'
+  elif ! (cd "$ROOT_DIR" && "$GH" auth status >/dev/null 2>&1); then
+    warn 'GitHub CLI is not authenticated, so the Pull Request must be created manually.'
+  else
+    EXISTING_PR_URL="$(
+      cd "$ROOT_DIR"
+      "$GH" pr list \
+        --head "$BRANCH" \
+        --state open \
+        --json url \
+        --jq '.[0].url' 2>/dev/null || true
+    )"
+
+    if [[ -n "$EXISTING_PR_URL" ]]; then
+      PR_URL="$EXISTING_PR_URL"
+      PR_STATUS="existing"
+      ok 'An open Pull Request already exists for this branch'
+    else
+      PR_BODY="## Package submission
+
+**Package:** $PACKAGE_NAME
+**Classification:** $CLASSIFICATION
+**Maintainer:** $AUTHOR
+
+$DESCRIPTION
+
+Submitted through the Brane package developer wizard for administrator review."
+
+      if PR_URL="$(
+        cd "$ROOT_DIR"
+        "$GH" pr create \
+          --base main \
+          --head "$BRANCH" \
+          --title "Add $PACKAGE_NAME package" \
+          --body "$PR_BODY" 2>/dev/null
+      )"; then
+        PR_STATUS="created"
+        ok 'Pull Request created'
+      else
+        PR_URL=""
+        warn 'The Pull Request could not be created automatically.'
+        info 'You can create it manually using the details below.'
+      fi
+    fi
+  fi
+else
+  info 'No Pull Request was created. You can create one manually when ready.'
+fi
+
 # ── Final report ──────────────────────────────────────────────────────────────
 package_file_report
 
@@ -795,17 +853,28 @@ blank
 printf '%s\n' '──────────────────────────────────────────────────────────────────────'
 blank
 
-printf "  ${BOLD}Next step — open a Pull Request on GitHub${RESET}\n"
-blank
-printf '  1. Go to: https://github.com/AdamBelloum/brane-packages\n'
-printf '  2. Click the green "Compare & pull request" button for your branch.\n'
-printf '  3. Add a short description of your package.\n'
-printf '  4. Click "Create pull request".\n'
-blank
-printf '  Pull request:\n'
-printf "    from: ${BOLD}%s${RESET}\n" "$BRANCH"
-printf "    into: ${BOLD}main${RESET}\n"
-blank
+if [[ -n "$PR_URL" ]]; then
+  if [[ "$PR_STATUS" == "created" ]]; then
+    printf "  ${BOLD}Pull Request created${RESET}\n"
+  else
+    printf "  ${BOLD}Existing Pull Request found${RESET}\n"
+  fi
+  blank
+  printf "    %s\n" "$PR_URL"
+  blank
+else
+  printf "  ${BOLD}Next step — open a Pull Request on GitHub${RESET}\n"
+  blank
+  printf '  1. Go to: https://github.com/AdamBelloum/brane-packages\n'
+  printf '  2. Click the green "Compare & pull request" button for your branch.\n'
+  printf '  3. Add a short description of your package.\n'
+  printf '  4. Click "Create pull request".\n'
+  blank
+  printf '  Pull request:\n'
+  printf "    from: ${BOLD}%s${RESET}\n" "$BRANCH"
+  printf "    into: ${BOLD}main${RESET}\n"
+  blank
+fi
 info 'The Pull Request submits the package for administrator review.'
 info 'The administrator reviews the submitted evidence and performs '
 info 'independent functional and infrastructure validation.'

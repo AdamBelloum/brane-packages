@@ -57,7 +57,8 @@ venv/
 intake/work/
 intake/source/
 
-# Local package-wizard recovery files and generated functional-test logs
+# Local package-wizard recovery files and generated validation logs
+/intake/*-submission-check.log
 /intake/*-functional-test.log
 
 # Local administrator PR-review worktrees and reports
