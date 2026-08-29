@@ -7,6 +7,7 @@ ROOT_DIR="$SCRIPT_DIR"
 PYTHON="${PYTHON:-$ROOT_DIR/.venv/bin/python}"
 AUDIT_TOOL="${ADMIN_AUDIT_TOOL:-$ROOT_DIR/tools/admin_review_audit.py}"
 MIGRATOR="${MIGRATOR:-$ROOT_DIR/.venv/bin/brane-package-migrate}"
+GH="${GH:-gh}"
 MANIFEST_SCHEMA="$ROOT_DIR/schemas/migration-manifest.schema.yml"
 PACKAGE_METADATA_SCHEMA="$ROOT_DIR/schemas/package-metadata.schema.yml"
 REVIEW_BASE="$ROOT_DIR/.admin-review"
@@ -15,20 +16,24 @@ WORKTREE_DIR=""
 WORKTREE_CREATED=0
 KEEP_WORKTREE=0
 BRANCH=""
+PR_NUMBER=""
 REQUESTED_PACKAGE=""
 
 usage() {
   cat <<'USAGE'
 Usage:
-  ./package_admin_review.sh --branch <remote-branch> [--package <name-or-path>] [--keep-worktree]
+  ./package_admin_review.sh [--branch <remote-branch> | --pr <number>] [--package <name-or-path>] [--keep-worktree]
 
-Creates an isolated, detached review worktree from origin/<remote-branch>.
+Interactively selects an open GitHub Pull Request when no --branch or --pr is
+provided from a terminal. Creates an isolated, detached review worktree from
+the selected PR head branch.
 Compares it with origin/main and records a structural package audit locally.
 It does not execute submitted test.sh files, modify the submitted branch,
 publish a package, or merge a PR.
 
 Options:
   --branch <name>     Remote branch containing the submitted package PR.
+  --pr <number>       Open GitHub Pull Request number to review.
   --package <value>   Select a changed package by name or packages/<name> path.
   --keep-worktree     Retain the temporary review worktree for diagnostics.
   -h, --help          Show this help text.
@@ -54,6 +59,11 @@ while [[ $# -gt 0 ]]; do
       BRANCH="$2"
       shift 2
       ;;
+    --pr)
+      [[ $# -ge 2 ]] || fail '--pr requires a Pull Request number.'
+      PR_NUMBER="$2"
+      shift 2
+      ;;
     --package)
       [[ $# -ge 2 ]] || fail '--package requires a package name or path.'
       REQUESTED_PACKAGE="$2"
@@ -73,9 +83,56 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$BRANCH" ]] || {
-  usage >&2
-  fail 'Provide the submitted remote branch with --branch.'
+select_open_pull_request() {
+  [[ -t 0 && -t 1 ]] || {
+    usage >&2
+    fail 'Provide --branch or --pr when standard input or output is not a terminal.'
+  }
+  command -v "$GH" >/dev/null 2>&1     || fail "GitHub CLI is unavailable: $GH"
+
+  local repository pr_json rows choice selected
+  local -a entries=()
+
+  repository="$("$GH" repo view --json nameWithOwner --jq '.nameWithOwner')"     || fail 'Could not determine the GitHub repository.'
+  pr_json="$("$GH" pr list --repo "$repository" --state open --limit 100     --json number,title,headRefName,author)"     || fail "Could not list open Pull Requests for $repository."
+
+  rows="$("$PYTHON" -c '
+import json
+import sys
+
+for item in json.load(sys.stdin):
+    clean = lambda value: " ".join((value or "").split())
+    print(
+        "{}\t{}\t{}\t{}".format(
+            item["number"],
+            item["headRefName"],
+            clean(item["title"]),
+            clean(item["author"]["login"]),
+        )
+    )
+' <<<"$pr_json")"
+
+  while IFS=$'\t' read -r number head title author; do
+    [[ -n "$number" ]] || continue
+    entries+=("$number"$'\t'"$head"$'\t'"$title"$'\t'"$author")
+  done <<<"$rows"
+
+  ((${#entries[@]} > 0)) || fail 'There are no open Pull Requests to review.'
+
+  printf '\nOpen Pull Requests:\n'
+  local index=1 entry number head title author
+  for entry in "${entries[@]}"; do
+    IFS=$'\t' read -r number head title author <<<"$entry"
+    printf '  %d) PR #%s — %s [%s; %s]\n'       "$index" "$number" "$title" "$head" "$author"
+    ((index += 1))
+  done
+
+  read -r -p 'Select Pull Request number: ' choice
+  [[ "$choice" =~ ^[1-9][0-9]*$ ]]     && ((choice <= ${#entries[@]}))     || fail 'Pull Request selection is invalid.'
+
+  selected="${entries[choice - 1]}"
+  IFS=$'\t' read -r PR_NUMBER BRANCH _ <<<"$selected"
+  printf 'Selected PR #%s, branch %s.\n' "$PR_NUMBER" "$BRANCH"
 }
 
 git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
@@ -85,6 +142,17 @@ git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
 [[ -x "$MIGRATOR" ]] || fail "Pinned migration tool is unavailable: $MIGRATOR"
 [[ -f "$MANIFEST_SCHEMA" ]] || fail "Migration schema is unavailable: $MANIFEST_SCHEMA"
 [[ -f "$PACKAGE_METADATA_SCHEMA" ]] || fail "Package metadata schema is unavailable: $PACKAGE_METADATA_SCHEMA"
+
+[[ -z "$BRANCH" || -z "$PR_NUMBER" ]]   || fail 'Use either --branch or --pr, not both.'
+
+if [[ -n "$PR_NUMBER" ]]; then
+  [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]     || fail "Invalid Pull Request number: $PR_NUMBER"
+  command -v "$GH" >/dev/null 2>&1     || fail "GitHub CLI is unavailable: $GH"
+  BRANCH="$("$GH" pr view "$PR_NUMBER"     --json state,headRefName     --jq 'select(.state == "OPEN") | .headRefName')"     || fail "Could not resolve Pull Request #$PR_NUMBER."
+  [[ -n "$BRANCH" ]]     || fail "Pull Request #$PR_NUMBER is not open or has no head branch."
+elif [[ -z "$BRANCH" ]]; then
+  select_open_pull_request
+fi
 
 git check-ref-format --branch "$BRANCH" >/dev/null 2>&1 \
   || fail "Invalid branch name: $BRANCH"
@@ -135,9 +203,6 @@ AUDIT:        NOT RUN
 METADATA:     NOT RUN
 PACKAGE TEST: NOT RUN
 DECISION:     PENDING REVIEW
-CONTAINER:    NOT RUN
-BRANE TEST:   NOT RUN
-DECISION:     REVIEW IN PROGRESS
 REPORT
 
 if ! "$PYTHON" "$AUDIT_TOOL" \
@@ -206,6 +271,45 @@ existing_report = existing_report.replace(
 )
 report_path.write_text(existing_report + "\n".join(lines) + "\n", encoding="utf-8")
 AUDIT_PY
+
+if [[ -z "$REQUESTED_PACKAGE" && -t 0 && -t 1 ]]; then
+  PACKAGE_ROWS="$("$PYTHON" - "$AUDIT_JSON" <<'PACKAGE_LIST_PY'
+import json
+import sys
+from pathlib import Path
+
+for candidate in json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["candidates"]:
+    print(f"{candidate['target_path']}\t{candidate['package_name']}")
+PACKAGE_LIST_PY
+)"
+  PACKAGE_COUNT=0
+  while IFS=$'\t' read -r target package_name; do
+    [[ -n "$target" ]] && ((PACKAGE_COUNT += 1))
+  done <<<"$PACKAGE_ROWS"
+
+  if ((PACKAGE_COUNT > 1)); then
+    printf '\nChanged packages:\n'
+    PACKAGE_INDEX=1
+    while IFS=$'\t' read -r target package_name; do
+      [[ -n "$target" ]] || continue
+      printf '  %d) %s [%s]\n' "$PACKAGE_INDEX" "$package_name" "$target"
+      ((PACKAGE_INDEX += 1))
+    done <<<"$PACKAGE_ROWS"
+
+    read -r -p 'Select package number: ' PACKAGE_CHOICE
+    [[ "$PACKAGE_CHOICE" =~ ^[1-9][0-9]*$ ]]       && ((PACKAGE_CHOICE <= PACKAGE_COUNT))       || fail 'Package selection is invalid.'
+
+    PACKAGE_INDEX=1
+    while IFS=$'\t' read -r target package_name; do
+      [[ -n "$target" ]] || continue
+      if ((PACKAGE_INDEX == PACKAGE_CHOICE)); then
+        REQUESTED_PACKAGE="$target"
+        break
+      fi
+      ((PACKAGE_INDEX += 1))
+    done <<<"$PACKAGE_ROWS"
+  fi
+fi
 
 SELECTION="$(
   "$PYTHON" - "$AUDIT_JSON" "$REQUESTED_PACKAGE" <<'SELECTION_PY'

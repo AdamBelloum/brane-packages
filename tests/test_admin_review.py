@@ -23,17 +23,53 @@ def test_help_describes_branch_review_interface() -> None:
     assert result.returncode == 0
     assert "Usage:" in result.stdout
     assert "--branch <remote-branch>" in result.stdout
+    assert "--pr <number>" in result.stdout
     assert "--keep-worktree" in result.stdout
     assert "--package <value>" in result.stdout
     assert "origin/main" in result.stdout
     assert "does not execute submitted test.sh files" in result.stdout
 
 
-def test_branch_is_required() -> None:
+def test_branch_or_pr_is_required_without_a_terminal() -> None:
     result = run_admin_review()
 
     assert result.returncode == 1
-    assert "Provide the submitted remote branch" in result.stderr
+    assert "Provide --branch or --pr" in result.stderr
+
+
+def test_branch_and_pr_cannot_be_combined() -> None:
+    result = run_admin_review("--branch", "submitted/package", "--pr", "42")
+
+    assert result.returncode == 1
+    assert "Use either --branch or --pr, not both" in result.stderr
+
+
+def test_pr_selector_resolves_an_open_pr_head_branch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    fake_gh = tmp_path / "gh"
+    fake_gh.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -eu\n"
+        '[[ "$1" == "pr" && "$2" == "view" ]]\n'
+        'printf "%s\\n" "main"\n',
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+    monkeypatch.setenv("GH", str(fake_gh))
+
+    result = run_admin_review("--pr", "42")
+
+    assert result.returncode == 1
+    assert "protected default branch" in result.stderr
+
+
+def test_pr_menu_formatter_uses_shell_safe_python_string_formatting() -> None:
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert '"{}\\t{}\\t{}\\t{}".format(' in script
+    assert 'f\'{item["number"]}' not in script
 
 
 def test_default_branch_is_rejected_as_a_submission() -> None:
