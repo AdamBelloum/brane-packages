@@ -17,3 +17,11 @@ packages:
   latest_version: 1.0.0
   description: Computes the minimum and maximum values in a numeric dataset and writes
     the results to the Brane result directory.
+- name: wizard_test_pkg
+  classification: shared-package
+  status: candidate
+  path: packages/wizard_test_pkg
+  maintainers:
+  - Adam
+  latest_version: 1.0.0
+  description: this is a test package to be removed after the test
