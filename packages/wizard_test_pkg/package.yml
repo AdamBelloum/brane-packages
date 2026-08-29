@@ -1,0 +1,21 @@
+schema_version: '1.0'
+name: wizard_test_pkg
+version: 1.0.0
+classification: shared-package
+status: candidate
+description: this is test to be removed
+maintainers:
+- Adam
+source:
+  type: local-path
+  location: /Users/adambelloum/Documents/brane-deployment/packages/wizard_test_pkg
+  source_path: .
+  imported_at: '2026-08-29T21:56:29.055526+00:00'
+compatibility:
+  architectures:
+  - x86_64
+  brane_baseline: 3.0.0
+data_handling:
+  accepts_user_data: false
+  bundled_data: none
+licence: Apache-2.0
