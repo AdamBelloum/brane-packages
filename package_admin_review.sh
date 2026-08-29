@@ -24,7 +24,8 @@ Usage:
 
 Creates an isolated, detached review worktree from origin/<remote-branch>.
 Compares it with origin/main and records a structural package audit locally.
-It does not modify the submitted branch, publish a package, or merge a PR.
+It does not execute submitted test.sh files, modify the submitted branch,
+publish a package, or merge a PR.
 
 Options:
   --branch <name>     Remote branch containing the submitted package PR.
@@ -285,15 +286,42 @@ if ! "$MIGRATOR" validate-repository   --repository-root "$WORKTREE_DIR" >>"$VAL
   METADATA_STATUS="FAILED"
 fi
 
-"$PYTHON" - "$REPORT_PATH" "$METADATA_STATUS" "$SELECTED_TARGET" "$SELECTED_MANIFEST" "$VALIDATION_LOG" <<'METADATA_PY'
+TEST_RECORD="$REVIEW_BASE/logs/manual-test-$TIMESTAMP.md"
+cat >"$TEST_RECORD" <<TEST_RECORD_TEMPLATE
+# Manual functional-test record
+
+- **Reviewed commit:** \`$REVIEW_COMMIT\`
+- **Selected package:** \`$SELECTED_TARGET\`
+- **Required script:** \`$SELECTED_TARGET/test.sh\`
+- **Status:** MANUAL REQUIRED
+
+This administrator workflow deliberately does not execute submitted package code.
+Perform the test only in an approved environment, then complete this record.
+
+## Execution evidence
+
+- **Reviewer:**
+- **Date and time:**
+- **Approved execution environment:**
+- **Command executed:**
+- **Result:** PASSED / FAILED
+- **Full output or log location:**
+- **Notes:**
+TEST_RECORD_TEMPLATE
+
+"$PYTHON" - "$REPORT_PATH" "$METADATA_STATUS" "$SELECTED_TARGET" "$SELECTED_MANIFEST" "$VALIDATION_LOG" "$TEST_RECORD" <<'METADATA_PY'
 from pathlib import Path
 import sys
 
 report_path = Path(sys.argv[1])
-status, target, manifest, log = sys.argv[2:]
+status, target, manifest, log, test_record = sys.argv[2:]
 existing = report_path.read_text(encoding="utf-8").replace(
     "METADATA:     NOT RUN",
     f"METADATA:     {status}",
+    1,
+).replace(
+    "PACKAGE TEST: NOT RUN",
+    "PACKAGE TEST: MANUAL REQUIRED",
     1,
 )
 section = f"""
@@ -303,6 +331,13 @@ section = f"""
 - **Selected intake manifest:** `{manifest}`
 - **Result:** {status}
 - **Technical log:** `{log}`
+
+## Functional test hand-off
+
+- **Required script:** `{target}/test.sh`
+- **Status:** MANUAL REQUIRED
+- **Policy:** This workflow never executes submitted package code.
+- **Manual test record:** `{test_record}`
 """
 report_path.write_text(existing + section, encoding="utf-8")
 METADATA_PY
@@ -319,6 +354,7 @@ printf '  Base commit: %s\n' "$BASE_COMMIT"
 printf '  Reviewed commit: %s\n' "$REVIEW_COMMIT"
 printf '  Structural audit evidence: %s\n' "$AUDIT_JSON"
 printf '  Validation log: %s\n' "$VALIDATION_LOG"
+printf '  Manual test record: %s\n' "$TEST_RECORD"
 printf '  Report: %s\n' "$REPORT_PATH"
 
 if [[ "$KEEP_WORKTREE" -eq 1 ]]; then

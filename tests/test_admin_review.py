@@ -25,6 +25,7 @@ def test_help_describes_branch_review_interface() -> None:
     assert "--keep-worktree" in result.stdout
     assert "--package <value>" in result.stdout
     assert "origin/main" in result.stdout
+    assert "does not execute submitted test.sh files" in result.stdout
 
 
 def test_branch_is_required() -> None:
