@@ -32,32 +32,35 @@ For every asset, the release lock must provide:
 The administrator runner must not guess asset names, use a Linux binary on
 macOS, use an unpinned nightly release, or build Brane from source.
 
-## Required non-interactive local action test
+## Interactive local action testing
 
-The current `brane package test <name> [version]` command is interactive. It
-requires terminal selection of one package action and terminal entry or
-selection of action inputs. It cannot be used as the automated acceptance-test
-interface.
+The shared package-test harness uses the approved local Brane CLI and Docker.
+It guides a developer or administrator through each required action test.
 
-The corrected release must provide a stable non-interactive mechanism that can:
+For each declared package action, the harness must:
 
-1. Select one explicit package action.
-2. Supply every action input without terminal prompts.
-3. Execute the action in the local package container.
-4. Expose the returned value or requested intermediate-result file for an
-   automated assertion.
-5. Return a reliable process exit status.
-6. Run without Brane central/worker infrastructure, certificates, instances,
-   policies, or remote execution.
+1. Display the action name, intended inputs, and expected result.
+2. Start the local Brane package test command.
+3. Allow the operator to select the required action and provide the stated
+   inputs through Brane's normal interactive prompts.
+4. Display the result or requested intermediate-result file.
+5. Require the operator to confirm `PASSED` or `FAILED`.
+6. Record the action, stated inputs, expected result, operator confirmation,
+   timestamp, and command log.
 
-The exact command syntax is a Brane release decision. A suitable interface
-would accept a package, version, action name, machine-readable input, and a
-machine-readable result location or format.
+The developer runs these cases before submission. The administrator repeats the
+same cases against the exact Pull Request commit as an independent acceptance
+check.
+
+The harness must read `container.yml` and prevent a passing test result when a
+declared action has not been tested. This is coverage of required test cases;
+the final result remains an operator-attested review of the displayed package
+output.
 
 ## Behaviour before this contract is met
 
-When the required platform asset or non-interactive action-test capability is
-unavailable, `package_admin_test.sh` must report `INCONCLUSIVE`.
+When the required matching platform asset, Docker capability, or local Brane
+CLI is unavailable, `package_admin_test.sh` must report `INCONCLUSIVE`.
 
 The absence of these administrator-environment capabilities must never be
 reported as a failure of the submitted package.
