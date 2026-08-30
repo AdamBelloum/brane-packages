@@ -1,0 +1,4 @@
+name: minmax-test-data
+description: Deterministic numeric CSV fixture for local minmax package tests.
+access: !file
+  path: ./numbers.csv

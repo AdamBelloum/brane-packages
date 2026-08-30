@@ -41,7 +41,7 @@ _bpt_action_was_completed() {
   local wanted="$1"
   local action
 
-  for action in "${BPT_COMPLETED_ACTIONS[@]}"; do
+  for action in "${BPT_COMPLETED_ACTIONS[@]-}"; do
     [[ "$action" == "$wanted" ]] && return 0
   done
 
@@ -72,6 +72,14 @@ brane_package_test_begin() {
   BPT_PYTHON="${BRANE_PACKAGE_TEST_PYTHON:-python3}"
   command -v "$BPT_PYTHON" >/dev/null 2>&1 \
     || _bpt_fail "Python interpreter is unavailable: $BPT_PYTHON" \
+    || return 1
+
+  BPT_SCRIPT_BIN="${BRANE_PACKAGE_TEST_SCRIPT_BIN:-}"
+  if [[ -z "$BPT_SCRIPT_BIN" ]]; then
+    BPT_SCRIPT_BIN="$(command -v script || true)"
+  fi
+  [[ -n "$BPT_SCRIPT_BIN" && -x "$BPT_SCRIPT_BIN" ]] \
+    || _bpt_fail 'the script utility is unavailable; cannot retain interactive test transcripts' \
     || return 1
 
   package_dir="$(cd "$package_dir" && pwd)"
@@ -148,6 +156,7 @@ PY
   printf 'version: %s\n' "$BPT_PACKAGE_VERSION" >>"$BPT_RECORD"
   printf 'container: %s\n' "$container" >>"$BPT_RECORD"
   printf 'brane: %s\n' "$BPT_BRANE_BIN" >>"$BPT_RECORD"
+  printf 'script: %s\n' "$BPT_SCRIPT_BIN" >>"$BPT_RECORD"
   printf 'started_utc: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$BPT_RECORD"
   printf 'declared_actions: %s\n' "${BPT_DECLARED_ACTIONS[*]}" >>"$BPT_RECORD"
 
@@ -179,6 +188,9 @@ brane_package_test_case() {
   local result_file="${4:-}"
   local selected_action
   local verdict
+  local safe_action
+  local case_log
+  local command_runner
   local -a command
 
   _bpt_require_started || return 1
@@ -209,13 +221,39 @@ brane_package_test_case() {
     command+=(--show-result "$result_file")
   fi
 
+  safe_action="${action//[^A-Za-z0-9_.-]/_}"
+  case_log="$BPT_SESSION_DIR/action-${safe_action}.log"
+  command_runner="$BPT_SESSION_DIR/run-action-${safe_action}.sh"
+
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'exec'
+    printf ' %q' "${command[@]}"
+    printf '\n'
+  } >"$command_runner"
+  chmod 700 "$command_runner"
+
   _bpt_record ''
   _bpt_record "case_action: $action"
   _bpt_record "case_inputs: $stated_inputs"
   _bpt_record "case_expected_result: $expected_result"
+  _bpt_record "case_transcript: $case_log"
   _bpt_record "case_started_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-  if ! "${command[@]}"; then
+  if ! (
+    case "$(uname -s)" in
+      Darwin)
+        "$BPT_SCRIPT_BIN" -q -e "$case_log" "$command_runner"
+        ;;
+      Linux)
+        "$BPT_SCRIPT_BIN" -q -e -c "$command_runner" "$case_log"
+        ;;
+      *)
+        _bpt_fail "unsupported platform for interactive transcript capture: $(uname -s)"
+        return 1
+        ;;
+    esac
+  ); then
     _bpt_record 'case_command: FAILED'
     _bpt_fail "Brane reported a failed test command for action: $action"
     return 1

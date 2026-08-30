@@ -40,3 +40,16 @@ def test_harness_requires_coverage_of_declared_actions():
     assert "BPT_COMPLETED_ACTIONS" in text
     assert "required action coverage is incomplete" in text
     assert "coverage: PASSED" in text
+
+def test_harness_tolerates_an_empty_completed_action_list_with_nounset():
+    text = HARNESS.read_text(encoding="utf-8")
+
+    assert '"${BPT_COMPLETED_ACTIONS[@]-}"' in text
+
+def test_harness_records_a_transcript_for_each_action_case():
+    text = HARNESS.read_text(encoding="utf-8")
+
+    assert 'case_transcript: $case_log' in text
+    assert 'action-${safe_action}.log' in text
+    assert '"$BPT_SCRIPT_BIN" -q -e "$case_log" "$command_runner"' in text
+    assert '"$BPT_SCRIPT_BIN" -q -e -c "$command_runner" "$case_log"' in text

@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / "test-fixtures" / "minmax" / "numbers.csv"
+FIXTURE = ROOT / "tests" / "fixtures" / "minmax" / "numbers.csv"
 
 
 def test_minmax_numbers_fixture_has_stable_expected_extremes() -> None:
