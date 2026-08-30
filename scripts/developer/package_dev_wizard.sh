@@ -249,7 +249,6 @@ ok "Package folder found: $SOURCE_DIR"
 ok "Package name: $PACKAGE_NAME"
 
 scan_package_files
-scan_package_files
 
 # ── Duplicate-name guard ──────────────────────────────────────────────────────
 if [[ -e "$ROOT_DIR/packages/$PACKAGE_NAME" || -e "$ROOT_DIR/test-fixtures/$PACKAGE_NAME" ]]; then
@@ -336,12 +335,14 @@ printf '%s\n' 'Scanning the package folder…'
 ok 'Package folder structure is valid'
 blank
 
-printf '%s\n' 'What is the primary purpose of this package?'
-printf '%s\n' '  1)  A reusable analysis or workflow package for production use'
-printf '%s\n' '  2)  An example, tutorial, or test package'
+printf '%s\n' 'What kind of package are you preparing?'
+printf '%s\n' '  1)  A reusable package — the normal choice'
+printf '%s\n' '      Use this for an analysis or workflow that other people can use.'
+printf '%s\n' '  2)  An example or tutorial package'
+printf '%s\n' '      Choose this only when you are preparing repository example material.'
 blank
 while true; do
-  KIND="$(ask 'Enter 1 or 2' 1)"
+  KIND="$(ask 'Enter 1 or 2 (usually 1)' 1)"
   case "$KIND" in
     1) CLASSIFICATION=reusable; TARGET_PATH="packages/$PACKAGE_NAME"; break ;;
     2) CLASSIFICATION=fixture;  TARGET_PATH="test-fixtures/$PACKAGE_NAME"; break ;;
@@ -510,8 +511,9 @@ MANIFEST_PY
 # STEP 4 — Validate, test, and add the package
 # ═════════════════════════════════════════════════════════════════════════════
 step 4 5 "Validate, test, and add the package"
-printf '%s\n' 'The wizard validates metadata, checks the migration plan, and runs'
-printf '%s\n' 'the package test script before adding package files to the repository.'
+printf '%s\n' 'The wizard checks your package information and planned repository location.'
+printf '%s\n' 'It then runs a small repeatable test before adding package files.'
+printf '%s\n' 'A passed test means the package is ready to submit for review; it is not yet approved.'
 blank
 
 SOURCE_FILE_COUNT="$(find "$SOURCE_DIR" -type f | wc -l | tr -d ' ')"

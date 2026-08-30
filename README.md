@@ -7,6 +7,28 @@ This repository is separate from deployment infrastructure:
 - **`brane-deployment`** remains the source of truth for deployment behaviour, test baselines, and operational configuration.
 - **`brane-packages`** contains reusable package source, package metadata, catalogue records, and the tooling used to assess and migrate package candidates.
 
+## Start here: package authors
+
+If you want to submit a new Brane package, start the guided package-author
+workflow:
+
+    ./scripts/developer/package_dev_wizard.sh
+
+The wizard guides you through five steps:
+
+1. Select your package folder.
+2. Provide a short description and contact details.
+3. Check that the package files are complete.
+4. Run the package's repeatable `test.sh` check.
+5. Create a branch and submit the package for review.
+
+You do not need to understand repository migration, schemas, or catalogue files
+to use the wizard. A successful local test means that your package is ready for
+review. It does not yet mean that the package is approved or published.
+
+For an explanation of fixed example data used during tests, see
+[`tests/fixtures/README.md`](tests/fixtures/README.md).
+
 ## Repository contracts
 
 - `packages/` contains reviewed shared packages only.
@@ -28,8 +50,9 @@ schemas/         Versioned YAML/JSON Schema contracts
 scripts/
   admin/         Administrator-operated review workflows
   developer/     Package-author development workflows
-test-fixtures/   Synthetic fixtures for tooling tests
+test-fixtures/   Example packages used to test repository tooling
 tests/           Automated regression tests
+  fixtures/      Fixed example data used while testing packages
 tools/           The package discovery and migration utility
 ```
 
@@ -64,7 +87,10 @@ and manifest changes if validation fails.
 The lower-level `package_admin_review.sh` remains an implementation-level review
 workflow and is not the normal administrator entry point.
 
-## Initial workflow
+## Maintainer intake workflow
+
+This advanced procedure is for repository maintainers reviewing package
+submissions. Package authors should normally use the developer wizard above.
 
 1. Run the discovery command against a source directory or repository checkout.
 1. Have the package author or responsible team run the interactive review command to supply missing author and curation information.
