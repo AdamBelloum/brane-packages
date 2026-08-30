@@ -523,7 +523,7 @@ REPOSITORY_TRACKED_FILE_COUNT="$(
   git -C "$ROOT_DIR" ls-files | wc -l | tr -d ' '
 )"
 LOG="$INTAKE_DIR/${PACKAGE_NAME}-submission-check.log"
-TEST_LOG="$INTAKE_DIR/${PACKAGE_NAME}-functional-test.log"
+TEST_EVIDENCE_DIR="$INTAKE_DIR/${PACKAGE_NAME}-functional-test-evidence"
 TEST_SCRIPT="$SOURCE_DIR/test.sh"
 
 printf '%s\n' '  Validation scope'
@@ -634,15 +634,26 @@ if [[ "$(yesno 'Run the functional package test now' Y)" != yes ]]; then
 fi
 
 printf '%s\n' '  Running: ./test.sh'
-if (cd "$SOURCE_DIR" && ./test.sh) >"$TEST_LOG" 2>&1; then
+printf '       Test evidence directory: %s\n' "$TEST_EVIDENCE_DIR"
+
+rm -rf "$TEST_EVIDENCE_DIR"
+mkdir -p "$TEST_EVIDENCE_DIR"
+
+if (
+  cd "$SOURCE_DIR"
+  BRANE_PACKAGE_TEST_HARNESS="$ROOT_DIR/scripts/lib/package_test_harness.sh" \
+  BRANE_PACKAGE_TEST_EVIDENCE_DIR="$TEST_EVIDENCE_DIR" \
+  BRANE_PACKAGE_TEST_PYTHON="$ROOT_DIR/.venv/bin/python" \
+  ./test.sh
+); then
   FUNCTIONAL_TEST_STATUS="passed"
   ok 'Functional package test passed'
   printf '       Test script: %s\n' "$TEST_SCRIPT"
-  printf '       Test log:    %s\n' "$TEST_LOG"
+  printf '       Test evidence directory: %s\n' "$TEST_EVIDENCE_DIR"
 else
   blank
-  warn 'Functional package test failed. Last 20 log lines:'
-  tail -n 20 "$TEST_LOG" | sed 's/^/       /'
+  warn 'Functional package test failed.'
+  printf '       Test evidence directory: %s\n' "$TEST_EVIDENCE_DIR"
 
   report_stop "$PACKAGE_NAME" "✗  Functional package test failed." \
     "test.sh returned a non-zero exit status. No package files were added." \
@@ -650,8 +661,8 @@ else
     "Test script:" \
     "  $TEST_SCRIPT" \
     "" \
-    "Full test log:" \
-    "  $TEST_LOG"
+    "Test evidence directory:" \
+    "  $TEST_EVIDENCE_DIR"
   exit 0
 fi
 blank

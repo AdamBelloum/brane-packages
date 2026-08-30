@@ -49,3 +49,17 @@ def test_wizard_checks_for_an_existing_pr_before_creating_one() -> None:
 
     assert existing_check < create_command
     assert existing_message < create_command
+
+
+def test_wizard_runs_interactive_tests_with_shared_harness_environment() -> None:
+    text = wizard_text()
+
+    assert 'BRANE_PACKAGE_TEST_HARNESS="$ROOT_DIR/scripts/lib/package_test_harness.sh"' in text
+    assert 'BRANE_PACKAGE_TEST_EVIDENCE_DIR="$TEST_EVIDENCE_DIR"' in text
+    assert 'BRANE_PACKAGE_TEST_PYTHON="$ROOT_DIR/.venv/bin/python"' in text
+
+    assert 'TEST_EVIDENCE_DIR="$INTAKE_DIR/${PACKAGE_NAME}-functional-test-evidence"' in text
+    assert 'Test evidence directory:' in text
+
+    # Interactive Brane prompts must retain access to the invoking terminal.
+    assert '(cd "$SOURCE_DIR" && ./test.sh) >"$TEST_LOG" 2>&1' not in text
